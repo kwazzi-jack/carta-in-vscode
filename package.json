@@ -1,0 +1,38 @@
+{
+  "name": "carta-in-vscode",
+  "displayName": "Carta in VS Code",
+  "description": "Unofficial extension to run and view CARTA tool within VS Code. The official maintainers of CARTA can be found here https://cartavis.org/. The owners of CARTA were not involved in the development of this tool.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "carta-in-vscode.open",
+        "title": "CARTA: Open Viewer"
+      },
+      {
+        "command": "carta-in-vscode.stop",
+        "title": "CARTA: Stop Server"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.109.0",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.54.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3"
+  }
+}
