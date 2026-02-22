@@ -2,7 +2,7 @@
   "name": "carta-in-vscode",
   "displayName": "Carta in VS Code",
   "description": "Unofficial extension to run and view CARTA tool within VS Code. The official maintainers of CARTA can be found here https://cartavis.org/. The owners of CARTA were not involved in the development of this tool.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "kwazzi-jack",
   "license": "MIT",
   "icon": "images/carta-for-vscode-icon.png",
