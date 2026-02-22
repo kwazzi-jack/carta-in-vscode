@@ -1,15 +1,19 @@
 import * as assert from 'assert';
-
-// You can import and use all API from the 'vscode' module
-// as well as import your extension to test it
 import * as vscode from 'vscode';
-// import * as myExtension from '../../extension';
 
 suite('Extension Test Suite', () => {
-	vscode.window.showInformationMessage('Start all tests.');
+    test('Extension should be present', () => {
+        assert.ok(vscode.extensions.getExtension('kwazzi-jack.carta-in-vscode'));
+    });
 
-	test('Sample test', () => {
-		assert.strictEqual(-1, [1, 2, 3].indexOf(5));
-		assert.strictEqual(-1, [1, 2, 3].indexOf(0));
-	});
+    test('Commands should be registered', async () => {
+		// Force extension to load first
+        const ext = vscode.extensions.getExtension('kwazzi-jack.carta-in-vscode');
+        await ext?.activate();
+
+		// Check if commands are present
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('carta-in-vscode.open'));
+        assert.ok(commands.includes('carta-in-vscode.stop'));
+    });
 });

@@ -1,5 +1,7 @@
 # Carta in VS Code
 
+![CI](https://github.com/kwazzi-jack/carta-in-vscode/actions/workflows/ci.yml/badge.svg)
+
 Run and view [CARTA](https://cartavis.org/) (Cube Analysis and Rendering Tool for Astronomy) as a tab inside VS Code.
 
 ## Requirements
