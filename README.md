@@ -15,6 +15,12 @@ Run and view [CARTA](https://cartavis.org/) (Cube Analysis and Rendering Tool fo
 
 If you open VS Code on a folder, it will automatically provide that as the root for CARTA. Otherwise, a folder selector is provided.
 
+## Compatibility
+
+- VS Code `1.85.0` or higher
+- Tested on VS Code `1.85.0`, `1.100.0`, stable, and insiders
+- Supported platforms: Linux (Ubuntu), macOS, Windows
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

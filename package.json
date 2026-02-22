@@ -5,6 +5,7 @@
   "version": "0.0.1",
   "publisher": "kwazzi-jack",
   "license": "MIT",
+  "icon": "images/carta-for-vscode-icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/kwazzi-jack/carta-in-vscode"
