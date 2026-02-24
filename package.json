@@ -28,7 +28,30 @@
         "command": "carta-in-vscode.stop",
         "title": "CARTA: Stop Server"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Carta in VS Code",
+      "properties": {
+        "carta-in-vscode.executablePath": {
+          "type": "string",
+          "default": "carta",
+          "description": "Path to the CARTA executable. Defaults to 'carta' (assumes it's on your PATH)."
+        },
+        "carta-in-vscode.port": {
+          "type": "number",
+          "default": 3002,
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Port number for the CARTA server."
+        },
+        "carta-in-vscode.startupTimeout": {
+          "type": "number",
+          "default": 180000,
+          "minimum": -1,
+          "description": "Milliseconds to wait for the CARTA server to start before timing out. Defaults to -1 which is no timeout applied."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

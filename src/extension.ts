@@ -1,12 +1,18 @@
 import * as vscode from 'vscode';
 import { ChildProcess, spawn } from 'child_process';
 
-// Keep alive for whole session
+// --- Globals ---
 let cartaProcess: ChildProcess | undefined;
 let cartaPanel: vscode.WebviewPanel | undefined;
 
-// --- Globals ---
-const CARTA_PORT = 3002;
+function getConfig(): { executablePath: string; port: number; startupTimeout: number; } {
+	const cfg = vscode.workspace.getConfiguration('carta-in-vscode');
+	return {
+		executablePath: cfg.get<string>('executablePath', 'carta'), // defaults to `carta`
+		port: cfg.get<number>('port', 3002), // defaults to 3002
+		startupTimeout: cfg.get<number>('startupTimeout', 180000), //defaults to 180 seconds (3 minutes)
+	};
+}
 
 async function getTargetFolder(): Promise<string | undefined> {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -65,8 +71,11 @@ function stopCarta() {
     cartaProcess.kill('SIGKILL');
     cartaProcess = undefined;
   }
+  // Fetch port
+  const { port } = getConfig();
+
   // Also force-kill anything still on the port
-  spawn('fuser', ['-k', `${CARTA_PORT}/tcp`], { shell: true });
+  spawn('fuser', ['-k', `${port}/tcp`], { shell: true });
 
   if (cartaPanel) {
     cartaPanel.dispose();
@@ -114,11 +123,14 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.withProgress(
 			{ location: vscode.ProgressLocation.Notification, title: 'Starting CARTA server...' }, () => new Promise<void>((resolve, reject) => {
 
+				// Fetch config values
+				const { executablePath, port, startupTimeout } = getConfig();
+
 				// Spawn process
-				cartaProcess = spawn('carta', [
+				cartaProcess = spawn(executablePath, [
 					'--no_browser',
 					'--host', 'localhost',
-					'-p', CARTA_PORT.toString(),
+					'-p', port.toString(),
 					folderPath
 				], { shell: true });
 
@@ -171,9 +183,9 @@ export function activate(context: vscode.ExtensionContext) {
 					if (!resolved) {
 						resolved = true;
 						reject(new Error('Timeout'));
-						vscode.window.showErrorMessage('CARTA: Timed out waiting for server to start')
+						vscode.window.showErrorMessage('CARTA: Timed out waiting for server to start');
 					}
-				}, 15000); // 15 seconds
+				}, startupTimeout);
 			})
 		);
 	});
@@ -181,7 +193,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// --- Command: Stop CARTA ---
 	const stopCommand = vscode.commands.registerCommand('carta-in-vscode.stop', () => {
 		stopCarta();
-		vscode.window.showInformationMessage('CARTA: Server stopped')
+		vscode.window.showInformationMessage('CARTA: Server stopped');
 	});
 
 	context.subscriptions.push(openCommand, stopCommand);
