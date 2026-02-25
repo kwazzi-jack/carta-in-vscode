@@ -55,7 +55,8 @@ If you open VS Code on a folder, it will automatically provide that as the root 
 
 - VS Code `1.85.0` or higher
 - Tested on VS Code `1.85.0`, `1.100.0`, stable, and insiders
-- Supported platforms: Linux (Ubuntu), macOS, Windows
+- Supported platforms: Linux (Ubuntu), macOS
+- **Windows Support**: Windows users are recommended to run the extension via [VS Code Remote - WSL](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-wsl) as CARTA is natively supported on Linux. Direct Windows execution is not officially supported at this time.
 
 ## Author
 
