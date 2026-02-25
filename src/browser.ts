@@ -69,7 +69,7 @@ function getWebviewContent(url: string): string {
  */
 function openInWebview(instanceId: string, url: string, folderName: string, extensionUri: vscode.Uri): Promise<void> {
 	const entry = webviewPanels.get(instanceId);
-	
+
 	if (entry) {
 		// Only update the HTML if the URL has changed (e.g. token refreshed on restart)
 		// to avoid redundant reloads on simple tab focus.
@@ -91,7 +91,7 @@ function openInWebview(instanceId: string, url: string, folderName: string, exte
 		}
 	);
 
-	panel.iconPath = vscode.Uri.joinPath(extensionUri, 'images', 'carta-for-vscode-icon-activity-icon.svg');
+	panel.iconPath = vscode.Uri.joinPath(extensionUri, 'images', 'carta-for-vscode-icon.png');
 	panel.webview.html = getWebviewContent(url);
 
 	panel.onDidDispose(() => {
