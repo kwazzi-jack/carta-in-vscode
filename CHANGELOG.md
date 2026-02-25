@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented here.
 
+## [0.1.1] - 2026-02-25
+
+### Fixed
+- Corrected `.vscodeignore` to exclude local AppImage assets from the published package
+
 ## [0.1.0] - 2026-02-25
 
 ### Added
