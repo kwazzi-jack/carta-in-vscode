@@ -22,12 +22,15 @@ export class CartaManager {
 	private nextInstanceId = 1;
 	/** Internal emitter for state change notifications */
 	private readonly onDidChangeEmitter = new EventEmitter();
+	/** IDs of instances currently being stopped intentionally */
+	private readonly stoppingInstances = new Set<string>();
 
 	/**
 	 * Forcefully kills a CARTA server process and its associated port.
 	 * @param instance The CartaInstance to terminate.
 	 */
 	private terminateInstanceProcess(instance: CartaInstance): void {
+		this.stoppingInstances.add(instance.id);
 		instance.process.kill('SIGKILL');
 
 		// On Linux, we use fuser as a fallback to ensure the port is released quickly.
@@ -217,9 +220,18 @@ export class CartaManager {
 			});
 
 			process.on('close', () => {
-				this.instances.delete(instanceId);
-				this.reservedPorts.delete(selectedPort);
-				this.fireChange();
+				const requested = this.stoppingInstances.has(instanceId);
+				if (requested) {
+					this.instances.delete(instanceId);
+					this.stoppingInstances.delete(instanceId);
+					this.reservedPorts.delete(selectedPort);
+					this.fireChange();
+				} else {
+					// Unexpected termination.
+					instance.status = 'crashed';
+					this.reservedPorts.delete(selectedPort);
+					this.fireChange();
+				}
 
 				if (!resolved) {
 					resolved = true;
@@ -252,9 +264,16 @@ export class CartaManager {
 			return false;
 		}
 
+		if (instance.status === 'crashed') {
+			this.instances.delete(instanceId);
+			this.fireChange();
+			return true;
+		}
+
 		this.terminateInstanceProcess(instance);
 		this.instances.delete(instanceId);
 		this.reservedPorts.delete(instance.port);
+		this.stoppingInstances.delete(instanceId);
 		this.fireChange();
 		return true;
 	}
@@ -272,7 +291,9 @@ export class CartaManager {
 		const folderPath = oldInstance.folderPath;
 		const port = oldInstance.port;
 
-		this.terminateInstanceProcess(oldInstance);
+		if (oldInstance.status !== 'crashed') {
+			this.terminateInstanceProcess(oldInstance);
+		}
 		this.instances.delete(instanceId);
 		this.fireChange();
 
@@ -342,12 +363,15 @@ export class CartaManager {
 	stopAll(): number {
 		const currentInstances = this.getInstances();
 		for (const instance of currentInstances) {
-			this.terminateInstanceProcess(instance);
+			if (instance.status !== 'crashed') {
+				this.terminateInstanceProcess(instance);
+			}
 		}
 
 		const count = this.instances.size;
 		this.instances.clear();
 		this.reservedPorts.clear();
+		this.stoppingInstances.clear();
 		this.fireChange();
 		return count;
 	}

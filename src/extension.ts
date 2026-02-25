@@ -85,6 +85,34 @@ interface ActionQuickPickItem extends vscode.QuickPickItem {
 }
 
 /**
+ * Checks if an instance is crashed and shows a warning if so.
+ * @returns True if the instance was crashed and handled.
+ */
+async function handleCrashedInstance(instanceId: string, manager: CartaManager, actionName: string): Promise<boolean> {
+	const instance = manager.getInstance(instanceId);
+	if (instance?.status === 'crashed') {
+		vscode.window.showWarningMessage(
+			`CARTA: Server process for #${instanceId} is not present and we cannot reconnect. It was killed for some reason not through this extension.`,
+			'Dismiss'
+		);
+		
+		if (actionName === 'stop') {
+			manager.stopInstance(instanceId);
+		} else if (actionName === 'open') {
+			// For 'open', we might just want to inform the user, but often we want to clear it from the UI too
+			// since it's useless. Or let them manually stop/restart.
+			// The user said "Then it should do the correct cleanup... depending on the calling function".
+			// For open, maybe we just leave it for them to decide?
+			// Actually, if they try to OPEN it, and it's dead, let's just clear it.
+			manager.stopInstance(instanceId);
+		}
+		// For 'restart', we don't clear it here, because 'manager.restartInstance' will handle it.
+		return true;
+	}
+	return false;
+}
+
+/**
  * Extension entry point. Called by VS Code when any activationEvents are triggered.
  */
 export function activate(context: vscode.ExtensionContext) {
@@ -208,10 +236,16 @@ export function activate(context: vscode.ExtensionContext) {
 	// Command: Stop every running CARTA server
 	const stopAllCommand = vscode.commands.registerCommand('carta-in-vscode.stopAll', () => {
 		const instances = manager.getInstances();
+		const hasCrashed = instances.some(i => i.status === 'crashed');
 		const stoppedCount = manager.stopAll();
 		for (const instance of instances) {
 			closeWebviewForInstance(instance.id);
 		}
+		
+		if (hasCrashed) {
+			vscode.window.showWarningMessage('CARTA: Some server processes were already dead and could not be reconnected. They were killed for some reason not through this extension.');
+		}
+
 		vscode.window.showInformationMessage(
 			stoppedCount > 0 ? `CARTA: Stopped ${stoppedCount} server${stoppedCount === 1 ? '' : 's'}` : 'CARTA: No running servers'
 		);
@@ -240,7 +274,16 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		const instance = manager.getInstance(instanceId);
-		if (!instance?.url) {
+		if (!instance) {
+			return;
+		}
+
+		if (instance.status === 'crashed') {
+			await handleCrashedInstance(instanceId, manager, 'open');
+			return;
+		}
+
+		if (!instance.url) {
 			vscode.window.showWarningMessage('CARTA: Instance URL is not ready yet');
 			return;
 		}
@@ -249,9 +292,15 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Command: Kill a specific instance from the Sidebar
-	const stopInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.stopInstance', (arg: unknown) => {
+	const stopInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.stopInstance', async (arg: unknown) => {
 		const instanceId = getInstanceId(arg);
 		if (!instanceId) {
+			return;
+		}
+
+		const instance = manager.getInstance(instanceId);
+		if (instance?.status === 'crashed') {
+			await handleCrashedInstance(instanceId, manager, 'stop');
 			return;
 		}
 
@@ -269,9 +318,18 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 
+		const instance = manager.getInstance(instanceId);
+		if (instance?.status === 'crashed') {
+			// Show warning but don't clear it since we're restarting.
+			await vscode.window.showWarningMessage(
+				`CARTA: Server process for #${instanceId} is not present and we cannot reconnect. It was killed for some reason not through this extension.`,
+				'Dismiss'
+			);
+		}
+
 		const config = getConfig();
 		try {
-			const instance = await vscode.window.withProgress(
+			const newInstance = await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
 					title: `Restarting CARTA server #${instanceId}...`,
@@ -281,8 +339,8 @@ export function activate(context: vscode.ExtensionContext) {
 				(): Promise<CartaInstance> => manager.restartInstance(instanceId, config)
 			);
 
-			if (instance.url) {
-				await openViewerForInstance(instance.id, instance.url, path.basename(instance.folderPath), config, context.extensionUri);
+			if (newInstance.url) {
+				await openViewerForInstance(newInstance.id, newInstance.url, path.basename(newInstance.folderPath), config, context.extensionUri);
 			}
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'Failed to restart CARTA server.';

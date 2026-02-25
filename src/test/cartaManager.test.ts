@@ -48,4 +48,59 @@ suite('CartaManager Test Suite', () => {
 		// Trigger a change via stopAll (even if 0)
 		manager.stopAll();
 	});
+
+	test('should mark instance as crashed if process exits unexpectedly', async function() {
+		const cp = require('child_process');
+		const os = require('os');
+		const path = require('path');
+		const fs = require('fs');
+		
+		const tmpDir = os.tmpdir();
+		const fakeExecutablePath = path.join(tmpDir, os.platform() === 'win32' ? 'fake_carta_crash.bat' : 'fake_carta_crash.sh');
+		const testPort = 3200;
+
+		// Script that prints the URL then stays alive
+		const scriptContent = os.platform() === 'win32'
+			? `@echo off\necho CARTA is accessible at http://localhost:${testPort}/?token=test-token\n:loop\ntimeout /t 1 >nul\ngoto loop`
+			: `#!/bin/bash\necho "CARTA is accessible at http://localhost:${testPort}/?token=test-token"\nwhile true; do sleep 1; done`;
+
+		fs.writeFileSync(fakeExecutablePath, scriptContent, { mode: 0o755 });
+
+		try {
+			const config = {
+				executablePath: fakeExecutablePath,
+				portRange: { start: testPort, end: testPort },
+				startupTimeout: 5000,
+				maxConcurrentServers: 5,
+				viewerMode: 'webview'
+			} as any;
+
+			const instance = await manager.startInstance(config, tmpDir);
+			assert.strictEqual(instance.status, 'running');
+
+			// Now kill the process EXTERNALLY (not through manager.stopInstance)
+			const onCrashed = new Promise<void>((resolve) => {
+				const sub = manager.onDidChange(() => {
+					if (instance.status === 'crashed') {
+						sub();
+						resolve();
+					}
+				});
+			});
+
+			instance.process.kill('SIGKILL');
+			await onCrashed;
+
+			assert.strictEqual(instance.status, 'crashed');
+			
+			// Cleanup the crashed instance
+			manager.stopInstance(instance.id);
+			assert.strictEqual(manager.getInstances().length, 0);
+
+		} finally {
+			if (fs.existsSync(fakeExecutablePath)) {
+				fs.unlinkSync(fakeExecutablePath);
+			}
+		}
+	}).timeout(10000);
 });

@@ -18,7 +18,7 @@ export interface PortRange {
 /**
  * Valid states for a CARTA server instance.
  */
-export type CartaInstanceStatus = 'starting' | 'running';
+export type CartaInstanceStatus = 'starting' | 'running' | 'crashed';
 
 /**
  * Represents a managed CARTA server process and its associated metadata.
