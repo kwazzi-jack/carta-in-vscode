@@ -1,8 +1,17 @@
+/**
+ * @module config
+ * Configuration retrieval and validation for the extension.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { getPortRangeSize, parsePortRange } from './ports';
 import { CartaConfig } from './types';
 
+/**
+ * Fetches the current configuration settings from the VS Code environment.
+ * @returns A validated CartaConfig object.
+ */
 export function getConfig(): CartaConfig {
 	const cfg = vscode.workspace.getConfiguration('carta-in-vscode');
 
@@ -18,6 +27,11 @@ export function getConfig(): CartaConfig {
 	};
 }
 
+/**
+ * Validates whether the configured port range can accommodate the maximum allowed servers.
+ * @param config The current CartaConfig.
+ * @returns An error message if invalid, or undefined if valid.
+ */
 export function validateLaunchCapacity(config: CartaConfig): string | undefined {
 	const rangeSize = getPortRangeSize(config.portRange);
 	if (rangeSize < config.maxConcurrentServers) {
@@ -27,6 +41,9 @@ export function validateLaunchCapacity(config: CartaConfig): string | undefined 
 	return undefined;
 }
 
+/**
+ * Retrieves the root path of the first open workspace folder.
+ */
 export function getWorkspaceFolderPath(): string | undefined {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
 	if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -36,6 +53,10 @@ export function getWorkspaceFolderPath(): string | undefined {
 	return workspaceFolders[0].uri.fsPath;
 }
 
+/**
+ * Determines the best starting point for the folder open dialog.
+ * @param lastSelectedFolderPath Folder that was most recently used.
+ */
 function getPreferredDefaultUri(lastSelectedFolderPath?: string): vscode.Uri | undefined {
 	if (lastSelectedFolderPath) {
 		return vscode.Uri.file(lastSelectedFolderPath);
@@ -51,6 +72,11 @@ function getPreferredDefaultUri(lastSelectedFolderPath?: string): vscode.Uri | u
 	return workspacePath ? vscode.Uri.file(workspacePath) : undefined;
 }
 
+/**
+ * Prompts the user to select a folder on their machine to serve with CARTA.
+ * @param lastSelectedFolderPath Previous selection to start the dialog from.
+ * @returns The selected folder path or undefined if the dialog was cancelled.
+ */
 export async function promptForTargetFolder(lastSelectedFolderPath?: string): Promise<string | undefined> {
 	const folderUri = await vscode.window.showOpenDialog({
 		canSelectFolders: true,

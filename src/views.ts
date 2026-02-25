@@ -1,15 +1,27 @@
+/**
+ * @module views
+ * Visual components for the VS Code activity bar, including tree items and data providers.
+ */
+
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CartaManager } from './cartaManager';
 import { CartaInstance } from './types';
 
+/**
+ * Represents a row in the "Running Viewers" sidebar view.
+ */
 export class RunningViewerItem extends vscode.TreeItem {
 	constructor(public readonly instance: CartaInstance) {
+		// Use the folder name as the primary title
 		super(path.basename(instance.folderPath) + "/", vscode.TreeItemCollapsibleState.None);
+		// Show instance metadata as a dimmed description
 		this.description = `#${instance.id} · ${instance.port}`;
 		this.tooltip = instance.url ?? `Starting on localhost:${instance.port}...`;
 		this.iconPath = new vscode.ThemeIcon(instance.url ? 'vm-active' : 'loading~spin');
 		this.contextValue = 'cartaInstance';
+		
+		// If the server is ready, make the row clickable to open/reveal the viewer.
 		if (instance.url) {
 			this.command = {
 				command: 'carta-in-vscode.openInstance',
@@ -21,6 +33,44 @@ export class RunningViewerItem extends vscode.TreeItem {
 	}
 }
 
+/**
+ * Data provider that connects the CartaManager's state to the "Running Viewers" tree view.
+ */
+export class RunningViewersTreeProvider implements vscode.TreeDataProvider<RunningViewerItem>, vscode.Disposable {
+	private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<RunningViewerItem | undefined>();
+	private readonly unsubscribeManager: () => void;
+
+	readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
+
+	constructor(private readonly manager: CartaManager) {
+		// Automatically refresh the UI whenever the manager's instances change.
+		this.unsubscribeManager = this.manager.onDidChange(() => this.refresh());
+	}
+
+	dispose(): void {
+		this.unsubscribeManager();
+		this.onDidChangeTreeDataEmitter.dispose();
+	}
+
+	/**
+	 * Force a re-render of the tree view.
+	 */
+	refresh(): void {
+		this.onDidChangeTreeDataEmitter.fire(undefined);
+	}
+
+	getTreeItem(element: RunningViewerItem): vscode.TreeItem {
+		return element;
+	}
+
+	getChildren(): RunningViewerItem[] {
+		return this.manager.getInstances().map((instance) => new RunningViewerItem(instance));
+	}
+}
+
+/**
+ * Represents a row in the "Recent Folders" sidebar view.
+ */
 export class RecentFolderItem extends vscode.TreeItem {
 	constructor(public readonly folderPath: string) {
 		super(path.basename(folderPath) + "/", vscode.TreeItemCollapsibleState.None);
@@ -36,12 +86,19 @@ export class RecentFolderItem extends vscode.TreeItem {
 	}
 }
 
+/**
+ * Data provider for the "Recent Folders" sidebar view.
+ */
 export class RecentFoldersTreeProvider implements vscode.TreeDataProvider<RecentFolderItem>, vscode.Disposable {
 	private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<RecentFolderItem | undefined>();
 	private readonly unsubscribe: () => void;
 
 	readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
+	/**
+	 * @param getRecents Function to retrieve the current list of paths.
+	 * @param onDidChange Function to subscribe to updates in the recent folder history.
+	 */
 	constructor(private readonly getRecents: () => string[], onDidChange: (listener: () => void) => () => void) {
 		this.unsubscribe = onDidChange(() => this.refresh());
 	}
@@ -61,34 +118,5 @@ export class RecentFoldersTreeProvider implements vscode.TreeDataProvider<Recent
 
 	getChildren(): RecentFolderItem[] {
 		return this.getRecents().slice(0, 10).map((folder) => new RecentFolderItem(folder));
-	}
-}
-
-
-export class RunningViewersTreeProvider implements vscode.TreeDataProvider<RunningViewerItem>, vscode.Disposable {
-	private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<RunningViewerItem | undefined>();
-	private readonly unsubscribeManager: () => void;
-
-	readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
-
-	constructor(private readonly manager: CartaManager) {
-		this.unsubscribeManager = this.manager.onDidChange(() => this.refresh());
-	}
-
-	dispose(): void {
-		this.unsubscribeManager();
-		this.onDidChangeTreeDataEmitter.dispose();
-	}
-
-	refresh(): void {
-		this.onDidChangeTreeDataEmitter.fire(undefined);
-	}
-
-	getTreeItem(element: RunningViewerItem): vscode.TreeItem {
-		return element;
-	}
-
-	getChildren(): RunningViewerItem[] {
-		return this.manager.getInstances().map((instance) => new RunningViewerItem(instance));
 	}
 }

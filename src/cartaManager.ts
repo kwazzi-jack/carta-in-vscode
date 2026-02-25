@@ -1,18 +1,36 @@
+/**
+ * @module cartaManager
+ * Core logic for spawning, monitoring, and terminating CARTA server processes.
+ */
+
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import * as os from 'os';
 import { listCandidatePorts, pickAvailablePort } from './ports';
 import { CartaConfig, CartaInstance } from './types';
 
+/**
+ * Manages the lifecycle of multiple CARTA server instances.
+ * Handles port reservation, process spawning, and state tracking.
+ */
 export class CartaManager {
+	/** Active CARTA instances indexed by their string ID */
 	private readonly instances = new Map<string, CartaInstance>();
+	/** Set of ports currently held or in use by managed processes */
 	private readonly reservedPorts = new Set<number>();
+	/** Sequential counter to generate new instance IDs */
 	private nextInstanceId = 1;
+	/** Internal emitter for state change notifications */
 	private readonly onDidChangeEmitter = new EventEmitter();
 
+	/**
+	 * Forcefully kills a CARTA server process and its associated port.
+	 * @param instance The CartaInstance to terminate.
+	 */
 	private terminateInstanceProcess(instance: CartaInstance): void {
 		instance.process.kill('SIGKILL');
 
+		// On Linux, we use fuser as a fallback to ensure the port is released quickly.
 		if (os.platform() === 'linux') {
 			const killer = spawn('fuser', ['-k', `${instance.port}/tcp`], {
 				shell: false,
@@ -22,33 +40,56 @@ export class CartaManager {
 		}
 	}
 
+	/**
+	 * Exposes an event to notify observers of changes to the running instances.
+	 * @param listener Function to call when instances start or stop.
+	 * @returns An unsubscribe function.
+	 */
 	readonly onDidChange = (listener: () => void): (() => void) => {
 		this.onDidChangeEmitter.on('change', listener);
 		return () => this.onDidChangeEmitter.off('change', listener);
 	};
 
+	/**
+	 * Triggers a change event to update the UI providers.
+	 */
 	private fireChange(): void {
 		this.onDidChangeEmitter.emit('change');
 	}
 
+	/**
+	 * Returns an array of currently running instances, newest first.
+	 */
 	getInstances(): CartaInstance[] {
 		return [...this.instances.values()].sort((a, b) => b.startedAt - a.startedAt);
 	}
 
+	/**
+	 * Retrieves a specific instance by its ID.
+	 */
 	getInstance(instanceId: string): CartaInstance | undefined {
 		return this.instances.get(instanceId);
 	}
 
+	/**
+	 * Initiates a new CARTA server for a given directory.
+	 * @param config Extension configuration for paths and timeouts.
+	 * @param folderPath The directory containing data to be served.
+	 * @param cancellationToken Optional VS Code token to handle user-initiated aborts.
+	 * @returns A Promise resolving to the running CartaInstance.
+	 */
 	async startInstance(config: CartaConfig, folderPath: string, cancellationToken?: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void }): Promise<CartaInstance> {
 		if (this.instances.size >= config.maxConcurrentServers) {
 			throw new Error(`Maximum running CARTA servers reached (${config.maxConcurrentServers}).`);
 		}
 
+		// Find an available port from the configured range.
 		const initialPort = await pickAvailablePort(config.portRange, this.reservedPorts);
 		if (!initialPort) {
 			throw new Error(`No free ports found in range ${config.portRange.start}-${config.portRange.end}.`);
 		}
 
+		// List potential ports and try starting the server on them sequentially.
 		const candidatePorts = [
 			initialPort,
 			...listCandidatePorts(config.portRange, this.reservedPorts).filter((port) => port !== initialPort),
@@ -82,6 +123,9 @@ export class CartaManager {
 		throw lastError ?? new Error('No usable ports available in the configured range.');
 	}
 
+	/**
+	 * Internal logic to spawn the CARTA executable on a specific port and wait for it to be ready.
+	 */
 	private async startInstanceOnPort(
 		config: CartaConfig,
 		folderPath: string,
@@ -133,6 +177,7 @@ export class CartaManager {
 				resolve(instance);
 			};
 
+			// We monitor stdout/stderr for the CARTA startup message containing the auth token URL.
 			const checkIfReady = (output: string) => {
 				const match = output.match(/http:\/\/localhost:\d+\/\?token=[\w-]+/);
 				if (match) {
@@ -197,6 +242,10 @@ export class CartaManager {
 		});
 	}
 
+	/**
+	 * Kills a managed CARTA server and frees its port.
+	 * @returns True if the instance existed and was stopped.
+	 */
 	stopInstance(instanceId: string): boolean {
 		const instance = this.instances.get(instanceId);
 		if (!instance) {
@@ -210,6 +259,10 @@ export class CartaManager {
 		return true;
 	}
 
+	/**
+	 * Restarts a specific CARTA instance on its original port, preserving its ID.
+	 * @returns The new CartaInstance state after it finishes booting.
+	 */
 	async restartInstance(instanceId: string, config: CartaConfig): Promise<CartaInstance> {
 		const oldInstance = this.instances.get(instanceId);
 		if (!oldInstance) {
@@ -219,19 +272,13 @@ export class CartaManager {
 		const folderPath = oldInstance.folderPath;
 		const port = oldInstance.port;
 
-		// Stop old process but keep port reserved briefly
 		this.terminateInstanceProcess(oldInstance);
 		this.instances.delete(instanceId);
 		this.fireChange();
 
-		// Wait a tiny bit for port to clear if possible
+		// Grace period for the OS to release the port socket.
 		await new Promise(resolve => setTimeout(resolve, 200));
 
-		// Start new process on the SAME port
-		// We use a modified version of startInstanceOnPort logic or just call it if we make it public
-		// Since startInstanceOnPort is private and adds to reservedPorts, we'll recreate the logic here
-		// but ensuring we use the same ID and Port.
-		
 		const process = spawn(config.executablePath, [
 			'--no_browser',
 			'--host', 'localhost',
@@ -241,7 +288,7 @@ export class CartaManager {
 		], { shell: false });
 
 		const newInstance: CartaInstance = {
-			id: instanceId, // Preserve ID
+			id: instanceId,
 			process,
 			folderPath,
 			port,
@@ -288,6 +335,10 @@ export class CartaManager {
 		});
 	}
 
+	/**
+	 * Stops all currently running servers.
+	 * @returns The number of servers stopped.
+	 */
 	stopAll(): number {
 		const currentInstances = this.getInstances();
 		for (const instance of currentInstances) {

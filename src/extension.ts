@@ -1,3 +1,9 @@
+/**
+ * @module extension
+ * Main entry point for the CARTA VS Code extension.
+ * Handles command registration, sidebar initialization, and folder history management.
+ */
+
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { closeWebviewForInstance, openViewerForInstance } from './browser';
@@ -6,6 +12,10 @@ import { getConfig, getWorkspaceFolderPath, promptForTargetFolder, validateLaunc
 import { RecentFoldersTreeProvider, RunningViewerItem, RunningViewersTreeProvider } from './views';
 import { CartaInstance } from './types';
 
+/**
+ * Extracts a valid CARTA instance ID from command arguments.
+ * Supports string IDs or TreeItem objects.
+ */
 function getInstanceId(arg: unknown): string | undefined {
 	if (typeof arg === 'string' && arg.length > 0) {
 		return arg;
@@ -25,19 +35,25 @@ function getInstanceId(arg: unknown): string | undefined {
 	return undefined;
 }
 
+/**
+ * Manages the persistent list of recently opened folders using VS Code's globalState.
+ */
 class RecentFoldersManager {
 	private static readonly STORAGE_KEY = 'recentFolders';
 	private static readonly MAX_ITEMS = 15;
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
 
+	/** Notify when the history list is modified */
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
 	constructor(private readonly context: vscode.ExtensionContext) {}
 
+	/** Retrieves the ordered list of folder paths from global storage. */
 	getRecentFolders(): string[] {
 		return this.context.globalState.get<string[]>(RecentFoldersManager.STORAGE_KEY, []);
 	}
 
+	/** Adds a new folder to the top of the history, removing duplicates and enforcing limits. */
 	async addFolder(folderPath: string): Promise<void> {
 		let recents = this.getRecentFolders();
 		recents = recents.filter((f) => f !== folderPath);
@@ -51,21 +67,28 @@ class RecentFoldersManager {
 		this.onDidChangeEmitter.fire();
 	}
 
+	/** Wipes the recent folder history. */
 	async clearHistory(): Promise<void> {
 		await this.context.globalState.update(RecentFoldersManager.STORAGE_KEY, []);
 		this.onDidChangeEmitter.fire();
 	}
 }
 
+/** Interface for folder selections in QuickPick menus */
 interface FolderQuickPickItem extends vscode.QuickPickItem {
 	path: string;
 }
 
+/** Interface for clear-history actions in QuickPick menus */
 interface ActionQuickPickItem extends vscode.QuickPickItem {
 	action: string;
 }
 
+/**
+ * Extension entry point. Called by VS Code when any activationEvents are triggered.
+ */
 export function activate(context: vscode.ExtensionContext) {
+	// Initialize core managers and UI providers
 	const manager = new CartaManager();
 	const recentManager = new RecentFoldersManager(context);
 	const runningProvider = new RunningViewersTreeProvider(manager);
@@ -78,6 +101,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	let lastSelectedFolderPath: string | undefined;
 
+	// Register Sidebar View Providers
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider('carta-recent', recentProvider),
 		vscode.window.registerTreeDataProvider('carta-running', runningProvider),
@@ -85,6 +109,9 @@ export function activate(context: vscode.ExtensionContext) {
 		recentProvider,
 	);
 
+	/**
+	 * Shared logic to initiate a CARTA server on a directory and open the viewer.
+	 */
 	async function startWithFolder(folderPath: string) {
 		const config = getConfig();
 		const capacityError = validateLaunchCapacity(config);
@@ -117,6 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
+	// Command: Open a folder selection dialog
 	const openCommand = vscode.commands.registerCommand('carta-in-vscode.open', async () => {
 		const folderPath = await promptForTargetFolder(lastSelectedFolderPath);
 		if (!folderPath) {
@@ -126,6 +154,7 @@ export function activate(context: vscode.ExtensionContext) {
 		await startWithFolder(folderPath);
 	});
 
+	// Command: Open a searchable QuickPick of recent folders
 	const openRecentCommand = vscode.commands.registerCommand('carta-in-vscode.openRecent', async () => {
 		const recents = recentManager.getRecentFolders();
 		if (recents.length === 0) {
@@ -157,14 +186,16 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		if ('path' in selection) {
-			await startWithFolder((selection as FolderQuickPickItem).path);
+			await startWithFolder(selection.path);
 		}
 	});
 
+	// Command: Internal hook to open a folder from the Sidebar
 	const openRecentFolderCommand = vscode.commands.registerCommand('carta-in-vscode.openRecentFolder', async (folderPath: string) => {
 		await startWithFolder(folderPath);
 	});
 
+	// Command: Open the current workspace root folder
 	const openWorkspaceCommand = vscode.commands.registerCommand('carta-in-vscode.openWorkspace', async () => {
 		const workspaceFolderPath = getWorkspaceFolderPath();
 		if (!workspaceFolderPath) {
@@ -174,6 +205,7 @@ export function activate(context: vscode.ExtensionContext) {
 		await startWithFolder(workspaceFolderPath);
 	});
 
+	// Command: Stop every running CARTA server
 	const stopAllCommand = vscode.commands.registerCommand('carta-in-vscode.stopAll', () => {
 		const instances = manager.getInstances();
 		const stoppedCount = manager.stopAll();
@@ -185,6 +217,7 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	});
 
+	// Command: Stop the most recently started server
 	const stopCommand = vscode.commands.registerCommand('carta-in-vscode.stop', () => {
 		const instances = manager.getInstances();
 		if (instances.length === 0) {
@@ -198,6 +231,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage(`CARTA: Stopped server #${newest.id}`);
 	});
 
+	// Command: Reveal/Focus the viewer for a specific instance
 	const openInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.openInstance', async (arg: unknown) => {
 		const config = getConfig();
 		const instanceId = getInstanceId(arg);
@@ -214,6 +248,7 @@ export function activate(context: vscode.ExtensionContext) {
 		await openViewerForInstance(instance.id, instance.url, path.basename(instance.folderPath), config, context.extensionUri);
 	});
 
+	// Command: Kill a specific instance from the Sidebar
 	const stopInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.stopInstance', (arg: unknown) => {
 		const instanceId = getInstanceId(arg);
 		if (!instanceId) {
@@ -227,6 +262,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Command: Re-spawn a specific instance on its original port
 	const restartInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.restartInstance', async (arg: unknown) => {
 		const instanceId = getInstanceId(arg);
 		if (!instanceId) {
@@ -241,12 +277,11 @@ export function activate(context: vscode.ExtensionContext) {
 					title: `Restarting CARTA server #${instanceId}...`,
 					cancellable: false,
 				},
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-call
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
 				(): Promise<CartaInstance> => manager.restartInstance(instanceId, config)
 			);
 
 			if (instance.url) {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
 				await openViewerForInstance(instance.id, instance.url, path.basename(instance.folderPath), config, context.extensionUri);
 			}
 		} catch (error: unknown) {
@@ -255,7 +290,22 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(openCommand, openRecentCommand, openRecentFolderCommand, openWorkspaceCommand, stopCommand, stopAllCommand, openInstanceCommand, stopInstanceCommand, restartInstanceCommand);
+	// Register all commands to the extension context for cleanup on deactivate
+	context.subscriptions.push(
+		openCommand,
+		openRecentCommand,
+		openRecentFolderCommand,
+		openWorkspaceCommand,
+		stopCommand,
+		stopAllCommand,
+		openInstanceCommand,
+		stopInstanceCommand,
+		restartInstanceCommand
+	);
 }
 
+/**
+ * Called by VS Code when the extension is disabled or closed.
+ * Note: Child processes are handled by the OS/VS Code, but could be explicitly killed here if desired.
+ */
 export function deactivate() {}
