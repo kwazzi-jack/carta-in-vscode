@@ -1,203 +1,163 @@
 import * as vscode from 'vscode';
-import { ChildProcess, spawn } from 'child_process';
+import { openViewerForInstance } from './browser';
+import { CartaManager } from './cartaManager';
+import { getConfig, getWorkspaceFolderPath, promptForTargetFolder, validateLaunchCapacity } from './config';
+import { RunningViewerItem, RunningViewersTreeProvider } from './views';
 
-// --- Globals ---
-let cartaProcess: ChildProcess | undefined;
-let cartaPanel: vscode.WebviewPanel | undefined;
-
-function getConfig(): { executablePath: string; port: number; startupTimeout: number; } {
-	const cfg = vscode.workspace.getConfiguration('carta-in-vscode');
-	return {
-		executablePath: cfg.get<string>('executablePath', 'carta'), // defaults to `carta`
-		port: cfg.get<number>('port', 3002), // defaults to 3002
-		startupTimeout: cfg.get<number>('startupTimeout', 180000), //defaults to 180 seconds (3 minutes)
-	};
-}
-
-async function getTargetFolder(): Promise<string | undefined> {
-	const workspaceFolders = vscode.workspace.workspaceFolders;
-	if (workspaceFolders && workspaceFolders.length > 0) {
-		return workspaceFolders[0].uri.fsPath;
+function getInstanceId(arg: unknown): string | undefined {
+	if (typeof arg === 'string' && arg.length > 0) {
+		return arg;
 	}
 
-	const folderUri = await vscode.window.showOpenDialog({
-		canSelectFolders: true,
-		canSelectFiles: false,
-		openLabel: 'Open folder with CARTA',
-	});
-
-	if (!folderUri || folderUri.length === 0) {
-		return undefined; // User cancelled
+	if (arg instanceof RunningViewerItem) {
+		return arg.instance.id;
 	}
 
-	return folderUri[0].fsPath;
-}
-
-function getWebviewHtml(cartaUrl: string): string {
-  return `
-    <!DOCTYPE html>
-    <html lang="en" style="height:100%; margin:0; padding:0;">
-    <head>
-      <meta charset="UTF-8"/>
-      <meta
-        http-equiv="Content-Security-Policy"
-        content="default-src 'none'; frame-src *; style-src 'unsafe-inline';"
-      />
-      <style>
-        body, html {
-          margin: 0;
-          padding: 0;
-          height: 100%;
-          overflow: hidden;
-          background: #1e1e1e;
-        }
-        iframe {
-          width: 100%;
-          height: 100vh;
-          border: none;
-          display: block;
-        }
-      </style>
-    </head>
-    <body>
-      <iframe src="${cartaUrl}" allowfullscreen></iframe>
-    </body>
-    </html>
-  `;
-}
-
-function stopCarta() {
-  if (cartaProcess) {
-    cartaProcess.kill('SIGKILL');
-    cartaProcess = undefined;
-  }
-  // Fetch port
-  const { port } = getConfig();
-
-  // Also force-kill anything still on the port
-  spawn('fuser', ['-k', `${port}/tcp`], { shell: true });
-
-  if (cartaPanel) {
-    cartaPanel.dispose();
-    cartaPanel = undefined;
-  }
-}
-
-function openPanel(cartaUrl: string, context: vscode.ExtensionContext) {
-	cartaPanel = vscode.window.createWebviewPanel(
-		'carta-in-vscode',
-		'Carta In VS Code',
-		vscode.ViewColumn.One,
-		{
-			enableScripts: true,
-			retainContextWhenHidden: true, // keeps CARTA alive when tab switching
+	if (typeof arg === 'object' && arg !== null && 'id' in arg) {
+		const { id } = arg as { id?: unknown };
+		if (typeof id === 'string' && id.length > 0) {
+			return id;
 		}
-	);
+	}
 
-	cartaPanel.webview.html = getWebviewHtml(cartaUrl);
-
-	// Clean up when tab closes
-	cartaPanel.onDidDispose(() => {
-		cartaPanel = undefined;
-		stopCarta();
-	}, null, context.subscriptions);
+	return undefined;
 }
 
 export function activate(context: vscode.ExtensionContext) {
+	const manager = new CartaManager();
+	const runningProvider = new RunningViewersTreeProvider(manager);
+	let lastSelectedFolderPath: string | undefined;
 
-	// --- Command: Open CARTA ---
+	context.subscriptions.push(
+		vscode.window.registerTreeDataProvider('carta-running', runningProvider),
+		runningProvider,
+	);
+
 	const openCommand = vscode.commands.registerCommand('carta-in-vscode.open', async () => {
-		// If panel exists, bring to focus
-		if (cartaPanel) {
-			cartaPanel.reveal();
+		const config = getConfig();
+		const capacityError = validateLaunchCapacity(config);
+		if (capacityError) {
+			vscode.window.showErrorMessage(`CARTA: ${capacityError}`);
 			return;
 		}
 
-		// Get folder path
-		const folderPath = await getTargetFolder();
+		const folderPath = await promptForTargetFolder(lastSelectedFolderPath);
 		if (!folderPath) {
 			return;
 		}
 
-		// Launch CARTA and wait for it to be ready
-		vscode.window.withProgress(
-			{ location: vscode.ProgressLocation.Notification, title: 'Starting CARTA server...' }, () => new Promise<void>((resolve, reject) => {
+		lastSelectedFolderPath = folderPath;
 
-				// Fetch config values
-				const { executablePath, port, startupTimeout } = getConfig();
+		try {
+			const instance = await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Starting CARTA server...',
+					cancellable: true,
+				},
+				(_progress, token) => manager.startInstance(config, folderPath, token)
+			);
 
-				// Spawn process
-				cartaProcess = spawn(executablePath, [
-					'--no_browser',
-					'--host', 'localhost',
-					'-p', port.toString(),
-					folderPath
-				], { shell: true });
+			if (instance.url) {
+				await openViewerForInstance(instance.url, config);
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to start CARTA server.';
+			if (message === 'Cancelled by user') {
+				vscode.window.showInformationMessage('CARTA: Startup cancelled');
+				return;
+			}
 
-				let resolved = false;
+			vscode.window.showErrorMessage(`CARTA: ${message}`);
+		}
+	});
 
-				function onReady(cartaUrl: string) {
-					if (!resolved) {
-						resolved = true;
-						resolve();
-						setTimeout(() => openPanel(cartaUrl, context), 500);
-					}
-				}
+	const openWorkspaceCommand = vscode.commands.registerCommand('carta-in-vscode.openWorkspace', async () => {
+		const config = getConfig();
+		const capacityError = validateLaunchCapacity(config);
+		if (capacityError) {
+			vscode.window.showErrorMessage(`CARTA: ${capacityError}`);
+			return;
+		}
 
-				function checkIfReady(output: string) {
-					const match = output.match(/http:\/\/localhost:\d+\/\?token=[\w-]+/);
-					if (match) {
-						onReady(match[0]); // pass the full URL including token
-					}
-				}
+		const workspaceFolderPath = getWorkspaceFolderPath();
+		if (!workspaceFolderPath) {
+			vscode.window.showErrorMessage('CARTA: Open Workspace requires an open workspace folder.');
+			return;
+		}
 
-				cartaProcess.stdout?.on('data', (data: Buffer) => {
-					const output = data.toString();
-					console.log('[CARTA stdout]', output);
-					checkIfReady(output);
-				});
+		try {
+			const instance = await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Starting CARTA server from workspace folder...',
+					cancellable: true,
+				},
+				(_progress, token) => manager.startInstance(config, workspaceFolderPath, token)
+			);
 
-				cartaProcess.stderr?.on('data', (data: Buffer) => {
-					const output = data.toString();
-					console.log('[CARTA stderr]', output);
-					checkIfReady(output);
-				});
+			if (instance.url) {
+				await openViewerForInstance(instance.url, config);
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to start CARTA server.';
+			if (message === 'Cancelled by user') {
+				vscode.window.showInformationMessage('CARTA: Startup cancelled');
+				return;
+			}
 
-				cartaProcess.on('error', (err) => {
-					if (!resolved) {
-						resolved = true;
-						reject(err);
-						vscode.window.showErrorMessage(
-							`CARTA: Failed to start. Is it installed and on your PATH? Error: ${err.message}`
-						);
-					}
-				});
+			vscode.window.showErrorMessage(`CARTA: ${message}`);
+		}
+	});
 
-				cartaProcess.on('close', (code) => {
-					console.log(`[CARTA] process exited with code ${code}`);
-					cartaProcess = undefined;
-				});
-
-				// Bail if CARTA does not respond
-				setTimeout(() => {
-					if (!resolved) {
-						resolved = true;
-						reject(new Error('Timeout'));
-						vscode.window.showErrorMessage('CARTA: Timed out waiting for server to start');
-					}
-				}, startupTimeout);
-			})
+	const stopAllCommand = vscode.commands.registerCommand('carta-in-vscode.stopAll', () => {
+		const stoppedCount = manager.stopAll();
+		vscode.window.showInformationMessage(
+			stoppedCount > 0 ? `CARTA: Stopped ${stoppedCount} server${stoppedCount === 1 ? '' : 's'}` : 'CARTA: No running servers'
 		);
 	});
 
-	// --- Command: Stop CARTA ---
 	const stopCommand = vscode.commands.registerCommand('carta-in-vscode.stop', () => {
-		stopCarta();
-		vscode.window.showInformationMessage('CARTA: Server stopped');
+		const instances = manager.getInstances();
+		if (instances.length === 0) {
+			vscode.window.showInformationMessage('CARTA: No running servers');
+			return;
+		}
+
+		const newest = instances[0];
+		manager.stopInstance(newest.id);
+		vscode.window.showInformationMessage(`CARTA: Stopped server #${newest.id}`);
 	});
 
-	context.subscriptions.push(openCommand, stopCommand);
+	const openInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.openInstance', async (arg: unknown) => {
+		const config = getConfig();
+		const instanceId = getInstanceId(arg);
+		if (!instanceId) {
+			return;
+		}
+
+		const instance = manager.getInstance(instanceId);
+		if (!instance?.url) {
+			vscode.window.showWarningMessage('CARTA: Instance URL is not ready yet');
+			return;
+		}
+
+		await openViewerForInstance(instance.url, config);
+	});
+
+	const stopInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.stopInstance', (arg: unknown) => {
+		const instanceId = getInstanceId(arg);
+		if (!instanceId) {
+			return;
+		}
+
+		const stopped = manager.stopInstance(instanceId);
+		if (stopped) {
+			vscode.window.showInformationMessage(`CARTA: Stopped server #${instanceId}`);
+		}
+	});
+
+	context.subscriptions.push(openCommand, openWorkspaceCommand, stopCommand, stopAllCommand, openInstanceCommand, stopInstanceCommand);
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() { }
+export function deactivate() {}

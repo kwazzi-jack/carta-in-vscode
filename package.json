@@ -22,11 +22,31 @@
     "commands": [
       {
         "command": "carta-in-vscode.open",
-        "title": "CARTA: Open Viewer"
+        "title": "CARTA: Open Viewer",
+        "icon": "$(vm-connect)"
       },
       {
         "command": "carta-in-vscode.stop",
-        "title": "CARTA: Stop Server"
+        "title": "CARTA: Stop Most Recent Viewer",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "carta-in-vscode.stopAll",
+        "title": "CARTA: Stop ALL Viewers",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "carta-in-vscode.openWorkspace",
+        "title": "CARTA: Open Viewer (Workspace Folder)"
+      },
+      {
+        "command": "carta-in-vscode.openInstance",
+        "title": "CARTA: Open Viewer Instance"
+      },
+      {
+        "command": "carta-in-vscode.stopInstance",
+        "title": "CARTA: Stop Viewer Instance",
+        "icon": "$(debug-stop)"
       }
     ],
     "configuration": {
@@ -37,20 +57,94 @@
           "default": "carta",
           "description": "Path to the CARTA executable. Defaults to 'carta' (assumes it's on your PATH)."
         },
-        "carta-in-vscode.port": {
-          "type": "number",
-          "default": 3002,
-          "minimum": 1024,
-          "maximum": 65535,
-          "description": "Port number for the CARTA server."
+        "carta-in-vscode.portRange": {
+          "type": "string",
+          "default": "3002-3099",
+          "pattern": "^\\s*\\d{2,5}\\s*-\\s*\\d{2,5}\\s*$",
+          "description": "Inclusive port range used for auto-selecting a free CARTA port (e.g. 3002-3099)."
         },
         "carta-in-vscode.startupTimeout": {
           "type": "number",
-          "default": 180000,
+          "default": -1,
           "minimum": -1,
           "description": "Milliseconds to wait for the CARTA server to start before timing out. Defaults to -1 which is no timeout applied."
+        },
+        "carta-in-vscode.maxConcurrentServers": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Maximum number of concurrently running CARTA servers."
+        },
+        "carta-in-vscode.viewerMode": {
+          "type": "string",
+          "enum": [
+            "simpleBrowser",
+            "externalBrowser"
+          ],
+          "default": "simpleBrowser",
+          "description": "Viewer surface used when opening a running CARTA instance."
+        },
+        "carta-in-vscode.browserExecutablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional browser executable path used when viewerMode is externalBrowser. Leave empty to use the OS default browser."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "carta-sidebar",
+          "title": "CARTA",
+          "icon": "images/carta-for-vscode-icon-activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "carta-sidebar": [
+        {
+          "id": "carta-running",
+          "name": "Running Viewers"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "carta-running",
+        "contents": "No running CARTA viewers.\n\n[Open CARTA Viewer](command:carta-in-vscode.open)\n\n[Stop Most Recent Viewer](command:carta-in-vscode.stop)\n\n[Stop All Viewers](command:carta-in-vscode.stopAll)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "carta-in-vscode.open",
+          "when": "view == carta-running",
+          "group": "navigation@1"
+        },
+        {
+          "command": "carta-in-vscode.stopAll",
+          "when": "view == carta-running",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "carta-in-vscode.stopInstance",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "inline@10"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "carta-in-vscode.openInstance",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.stopInstance",
+          "when": "false"
+        }
+      ]
     }
   },
   "scripts": {
@@ -60,14 +154,14 @@
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.39.2",
-    "mocha": "^11.7.5",
+    "eslint": "^10.0.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0"
+    "typescript-eslint": "^8.56.1"
   }
 }
