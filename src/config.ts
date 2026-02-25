@@ -13,7 +13,7 @@ export function getConfig(): CartaConfig {
 		portRange: parsePortRange(portRangeRaw),
 		startupTimeout: cfg.get<number>('startupTimeout', -1),
 		maxConcurrentServers: cfg.get<number>('maxConcurrentServers', 5),
-		viewerMode: cfg.get<'simpleBrowser' | 'externalBrowser'>('viewerMode', 'simpleBrowser'),
+		viewerMode: cfg.get<'webview' | 'simpleBrowser' | 'externalBrowser'>('viewerMode', 'webview'),
 		browserExecutablePath: cfg.get<string>('browserExecutablePath', '')?.trim() || undefined,
 	};
 }

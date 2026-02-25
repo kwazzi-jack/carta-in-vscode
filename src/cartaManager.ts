@@ -96,6 +96,7 @@ export class CartaManager {
 			'--no_browser',
 			'--host', 'localhost',
 			'-p', selectedPort.toString(),
+			'--top_level_folder', folderPath,
 			folderPath,
 		], { shell: false });
 
@@ -207,6 +208,84 @@ export class CartaManager {
 		this.reservedPorts.delete(instance.port);
 		this.fireChange();
 		return true;
+	}
+
+	async restartInstance(instanceId: string, config: CartaConfig): Promise<CartaInstance> {
+		const oldInstance = this.instances.get(instanceId);
+		if (!oldInstance) {
+			throw new Error(`Instance ${instanceId} not found.`);
+		}
+
+		const folderPath = oldInstance.folderPath;
+		const port = oldInstance.port;
+
+		// Stop old process but keep port reserved briefly
+		this.terminateInstanceProcess(oldInstance);
+		this.instances.delete(instanceId);
+		this.fireChange();
+
+		// Wait a tiny bit for port to clear if possible
+		await new Promise(resolve => setTimeout(resolve, 200));
+
+		// Start new process on the SAME port
+		// We use a modified version of startInstanceOnPort logic or just call it if we make it public
+		// Since startInstanceOnPort is private and adds to reservedPorts, we'll recreate the logic here
+		// but ensuring we use the same ID and Port.
+		
+		const process = spawn(config.executablePath, [
+			'--no_browser',
+			'--host', 'localhost',
+			'-p', port.toString(),
+			'--top_level_folder', folderPath,
+			folderPath,
+		], { shell: false });
+
+		const newInstance: CartaInstance = {
+			id: instanceId, // Preserve ID
+			process,
+			folderPath,
+			port,
+			startedAt: Date.now(),
+			status: 'starting',
+		};
+
+		this.instances.set(instanceId, newInstance);
+		this.fireChange();
+
+		return new Promise<CartaInstance>((resolve, reject) => {
+			let resolved = false;
+
+			process.stdout?.on('data', (data: Buffer) => {
+				const match = data.toString().match(/http:\/\/localhost:\d+\/\?token=[\w-]+/);
+				if (match && !resolved) {
+					resolved = true;
+					newInstance.url = match[0];
+					newInstance.status = 'running';
+					this.fireChange();
+					resolve(newInstance);
+				}
+			});
+
+			process.on('error', (err) => {
+				if (!resolved) {
+					resolved = true;
+					this.instances.delete(instanceId);
+					this.reservedPorts.delete(port);
+					this.fireChange();
+					reject(err);
+				}
+			});
+
+			process.on('close', () => {
+				if (!resolved) {
+					resolved = true;
+					this.instances.delete(instanceId);
+					this.reservedPorts.delete(port);
+					this.fireChange();
+					reject(new Error('CARTA process closed during restart.'));
+				}
+			});
+		});
 	}
 
 	stopAll(): number {

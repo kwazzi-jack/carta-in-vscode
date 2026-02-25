@@ -22,6 +22,6 @@ export interface CartaConfig {
 	portRange: PortRange;
 	startupTimeout: number;
 	maxConcurrentServers: number;
-	viewerMode: 'simpleBrowser' | 'externalBrowser';
+	viewerMode: 'simpleBrowser' | 'externalBrowser' | 'webview';
 	browserExecutablePath?: string;
 }

@@ -23,7 +23,7 @@
       {
         "command": "carta-in-vscode.open",
         "title": "CARTA: Open Viewer",
-        "icon": "$(vm-connect)"
+        "icon": "$(add-small)"
       },
       {
         "command": "carta-in-vscode.stop",
@@ -40,6 +40,11 @@
         "title": "CARTA: Open Viewer (Workspace Folder)"
       },
       {
+        "command": "carta-in-vscode.openRecent",
+        "title": "CARTA: Open Recent Folder...",
+        "icon": "$(history)"
+      },
+      {
         "command": "carta-in-vscode.openInstance",
         "title": "CARTA: Open Viewer Instance"
       },
@@ -47,6 +52,11 @@
         "command": "carta-in-vscode.stopInstance",
         "title": "CARTA: Stop Viewer Instance",
         "icon": "$(debug-stop)"
+      },
+      {
+        "command": "carta-in-vscode.restartInstance",
+        "title": "CARTA: Restart Viewer Instance",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": {
@@ -79,10 +89,11 @@
         "carta-in-vscode.viewerMode": {
           "type": "string",
           "enum": [
+            "webview",
             "simpleBrowser",
             "externalBrowser"
           ],
-          "default": "simpleBrowser",
+          "default": "webview",
           "description": "Viewer surface used when opening a running CARTA instance."
         },
         "carta-in-vscode.browserExecutablePath": {
@@ -104,6 +115,10 @@
     "views": {
       "carta-sidebar": [
         {
+          "id": "carta-recent",
+          "name": "Recent Folders"
+        },
+        {
           "id": "carta-running",
           "name": "Running Viewers"
         }
@@ -112,7 +127,7 @@
     "viewsWelcome": [
       {
         "view": "carta-running",
-        "contents": "No running CARTA viewers.\n\n[Open CARTA Viewer](command:carta-in-vscode.open)\n\n[Stop Most Recent Viewer](command:carta-in-vscode.stop)\n\n[Stop All Viewers](command:carta-in-vscode.stopAll)"
+        "contents": "No running CARTA viewers.\n\n[$(add-small)](command:carta-in-vscode.open)\n\n"
       }
     ],
     "menus": {
@@ -123,12 +138,22 @@
           "group": "navigation@1"
         },
         {
-          "command": "carta-in-vscode.stopAll",
+          "command": "carta-in-vscode.openRecent",
           "when": "view == carta-running",
           "group": "navigation@2"
+        },
+        {
+          "command": "carta-in-vscode.stopAll",
+          "when": "view == carta-running",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
+        {
+          "command": "carta-in-vscode.restartInstance",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "inline@9"
+        },
         {
           "command": "carta-in-vscode.stopInstance",
           "when": "view == carta-running && viewItem == cartaInstance",
