@@ -10,7 +10,10 @@ All notable changes to this project will be documented here.
 - "Recent Folders" sidebar view to quickly re-open previously used directories
 - `CARTA: Open Recent Folder...` command with searchable history and persistent storage
 - `CARTA: Restart Viewer Instance` command and button directly in the sidebar
-- Comprehensive unit and integration test suite (Ports, Config, Process Management, Launcher)
+- Detection and robust handling of externally killed/crashed server processes
+- Visual status indicators (warning icons) and informative popups for dead server instances
+- Official CARTA AppImage integration tests for Linux (with FUSE detection)
+- Comprehensive unit and integration test suite (Ports, Config, Process Management, Launcher, Crashes)
 - Automated CARTA installation in CI for Ubuntu and macOS
 - Detailed JSDoc documentation across the codebase
 
