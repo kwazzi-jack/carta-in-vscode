@@ -35,7 +35,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 
 	test('should start CARTA and log a successful connection', async function() {
 		const config = getConfig();
-		
+
 		try {
 			const cp = require('child_process');
 			cp.execSync(`${config.executablePath} --version`, { stdio: 'ignore' });
@@ -50,9 +50,9 @@ suite('CARTA Launcher Integration Test Suite', () => {
 
 		try {
 			const instance = await manager.startInstance(startConfig, testDir);
-			
+
 			assert.ok(instance.url, 'Instance should have a URL');
-			
+
 			let connectedLogSeen = false;
 			const logPromise = new Promise<void>((resolve) => {
 				const listener = (data: Buffer) => {
@@ -64,7 +64,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 					}
 				};
 				instance.process.stdout?.on('data', listener);
-				
+
 				setTimeout(resolve, 10000);
 			});
 
@@ -79,7 +79,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 			await logPromise;
 
 			assert.ok(instance.url.includes(`:${instance.port}`), 'URL should contain the correct port');
-			
+
 			manager.stopInstance(instance.id);
 		} catch (error) {
 			assert.fail(`Integration test failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -88,7 +88,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 
 	test('should start and stop a real CARTA instance', async function() {
 		const config = getConfig();
-		
+
 		try {
 			const cp = require('child_process');
 			cp.execSync(`${config.executablePath} --version`, { stdio: 'ignore' });
@@ -102,7 +102,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 
 		const instance = await manager.startInstance(startConfig, testDir);
 		assert.strictEqual(instance.status, 'running');
-		
+
 		const stopped = manager.stopInstance(instance.id);
 		assert.strictEqual(stopped, true);
 		assert.strictEqual(manager.getInstances().length, 0);
@@ -112,13 +112,13 @@ suite('CARTA Launcher Integration Test Suite', () => {
 		const config = getConfig();
 		const tmpDir = os.tmpdir();
 		const fakeExecutablePath = path.join(tmpDir, os.platform() === 'win32' ? 'fake_carta.bat' : 'fake_carta.sh');
-		
+
 		const testPort = 3100;
 
-		const scriptContent = os.platform() === 'win32' 
+		const scriptContent = os.platform() === 'win32'
 			? `@echo off\necho CARTA is accessible at http://localhost:${testPort}/?token=test-token\npause`
 			: `#!/bin/bash\necho "CARTA is accessible at http://localhost:${testPort}/?token=test-token"\nsleep 100`;
-		
+
 		fs.writeFileSync(fakeExecutablePath, scriptContent, { mode: 0o755 });
 
 		const customConfig = {
@@ -139,18 +139,58 @@ suite('CARTA Launcher Integration Test Suite', () => {
 		}
 	});
 
-	test('should validate FUSE requirement for hypothetical AppImage usage', function() {
-		// This test doesn't run a real AppImage (to avoid massive downloads in CI)
-		// but it verifies the environmental check we would use for one.
-		if (os.platform() === 'linux') {
-			const fuseAvailable = isFuseAvailable();
-			if (!fuseAvailable) {
-				console.log('FUSE not available: AppImage testing would be limited to --appimage-extract mode.');
-			} else {
-				console.log('FUSE available: AppImage testing can proceed normally.');
-			}
-		} else {
+	test('should work with the official AppImage if available locally', async function() {
+		if (os.platform() !== 'linux') {
 			this.skip();
+			return;
 		}
+
+		if (!isFuseAvailable()) {
+			this.skip();
+			return;
+		}
+
+		// Look for the AppImage in the specified path relative to project root
+		const projectRoot = path.join(__dirname, '..', '..');
+		const appImagePath = path.join(projectRoot, 'carta.AppImage.x86_64', 'carta-x86_64.AppImage');
+
+		if (!fs.existsSync(appImagePath)) {
+			this.skip();
+			return;
+		}
+
+		const config = getConfig();
+		const testDir = os.tmpdir();
+		const appImageConfig = {
+			...config,
+			executablePath: appImagePath,
+			startupTimeout: 40000
+		};
+
+		try {
+			const instance = await manager.startInstance(appImageConfig, testDir);
+			assert.strictEqual(instance.status, 'running');
+			assert.ok(instance.url, 'AppImage instance should have a URL');
+
+			const stopped = manager.stopInstance(instance.id);
+			assert.strictEqual(stopped, true);
+		} catch (error) {
+			assert.fail(`AppImage integration test failed: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}).timeout(60000);
+
+	test('should validate FUSE requirement for hypothetical AppImage usage', function() {
+		if (os.platform() !== 'linux') {
+			this.skip();
+			return;
+		}
+
+		const fuseAvailable = isFuseAvailable();
+		if (!fuseAvailable) {
+			this.skip();
+			return;
+		}
+
+		console.log('FUSE available: AppImage testing can proceed normally.');
 	});
 });

@@ -26,7 +26,7 @@ suite('CartaManager Test Suite', () => {
 	});
 
 	test('should track manually added (mocked) instances', () => {
-		// Note: We are testing state management here. 
+		// Note: We are testing state management here.
 		// Since instances is private, we'll verify via getInstances
 		// but we need to use startInstance or a public way if possible.
 		// Since we want to avoid actual spawn, we'll just test the public API behavior.
@@ -44,7 +44,7 @@ suite('CartaManager Test Suite', () => {
 			unsubscribe();
 			done();
 		});
-		
+
 		// Trigger a change via stopAll (even if 0)
 		manager.stopAll();
 	});
