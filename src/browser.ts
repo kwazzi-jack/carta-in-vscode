@@ -40,15 +40,19 @@ function openWithExecutable(executablePath: string, url: string, args: string[])
 
 /**
  * Generates the HTML boilerplate for the Webview iframe.
- * @param url The authenticated CARTA URL.
+ * @param url The authenticated CARTA URL (resolved to external URI).
  */
 function getWebviewContent(url: string): string {
+	const uri = vscode.Uri.parse(url);
+	const origin = `${uri.scheme}://${uri.authority}`;
+
 	return `
 		<!DOCTYPE html>
 		<html lang="en">
 		<head>
 			<meta charset="UTF-8">
 			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src ${origin} ${url}; style-src 'unsafe-inline';">
 			<title>CARTA Viewer</title>
 			<style>
 				body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
@@ -66,10 +70,11 @@ function getWebviewContent(url: string): string {
  * Manages the creation and focusing of a VS Code Webview panel for a CARTA instance.
  * @param instanceId The unique ID of the CARTA server.
  * @param url The CARTA web interface URL.
+ * @param resolvedUrl The resolved external URI for the viewer.
  * @param folderName Display name for the tab title.
  * @param extensionUri Base URI of the extension for resource loading (icons).
  */
-function openInWebview(instanceId: string, url: string, folderName: string, extensionUri: vscode.Uri): Promise<void> {
+async function openInWebview(instanceId: string, url: string, resolvedUrl: string, folderName: string, extensionUri: vscode.Uri): Promise<void> {
 	const entry = webviewPanels.get(instanceId);
 
 	if (entry) {
@@ -77,10 +82,10 @@ function openInWebview(instanceId: string, url: string, folderName: string, exte
 		// to avoid redundant reloads on simple tab focus.
 		if (entry.url !== url) {
 			entry.url = url;
-			entry.panel.webview.html = getWebviewContent(url);
+			entry.panel.webview.html = getWebviewContent(resolvedUrl);
 		}
 		entry.panel.reveal(vscode.ViewColumn.Active);
-		return Promise.resolve();
+		return;
 	}
 
 	const panel = vscode.window.createWebviewPanel(
@@ -94,14 +99,13 @@ function openInWebview(instanceId: string, url: string, folderName: string, exte
 	);
 
 	panel.iconPath = vscode.Uri.joinPath(extensionUri, 'images', 'carta-for-vscode-icon.png');
-	panel.webview.html = getWebviewContent(url);
+	panel.webview.html = getWebviewContent(resolvedUrl);
 
 	panel.onDidDispose(() => {
 		webviewPanels.delete(instanceId);
 	}, null);
 
 	webviewPanels.set(instanceId, { panel, url });
-	return Promise.resolve();
 }
 
 /**
@@ -124,25 +128,33 @@ export function closeWebviewForInstance(instanceId: string): void {
  * @param extensionUri Extension base URI.
  */
 export async function openViewerForInstance(instanceId: string, url: string, folderName: string, config: CartaConfig, extensionUri: vscode.Uri): Promise<void> {
+	// Resolve the local URL to an external URI for SSH/Remote compatibility.
+	// This ensures VS Code port forwarding is active and we have the correct public address.
+	const resolvedUri = await vscode.env.asExternalUri(vscode.Uri.parse(url));
+	const resolvedUrl = resolvedUri.toString();
+
 	if (config.viewerMode === 'webview') {
-		await openInWebview(instanceId, url, folderName, extensionUri);
+		await openInWebview(instanceId, url, resolvedUrl, folderName, extensionUri);
 		return;
 	}
 
 	if (config.viewerMode === 'externalBrowser') {
-		if (config.browserExecutablePath) {
+		// If running in a remote context (SSH, Codespaces, Docker), 
+		// we cannot spawn a local browser process on the server side.
+		// We fallback to openExternal which correctly triggers the browser on the user's client machine.
+		if (config.browserExecutablePath && !vscode.env.remoteName) {
 			const validatedPath = await validateExecutablePath(config.browserExecutablePath, { type: 'browser' });
-			await openWithExecutable(validatedPath, url, config.browserExecutableArgs);
+			await openWithExecutable(validatedPath, resolvedUrl, config.browserExecutableArgs);
 			return;
 		}
 
-		await vscode.env.openExternal(vscode.Uri.parse(url));
+		await vscode.env.openExternal(resolvedUri);
 		return;
 	}
 
 	try {
-		await openInSimpleBrowser(url);
+		await openInSimpleBrowser(resolvedUrl);
 	} catch {
-		await vscode.env.openExternal(vscode.Uri.parse(url));
+		await vscode.env.openExternal(resolvedUri);
 	}
 }

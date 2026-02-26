@@ -22,7 +22,7 @@ export class RunningViewerItem extends vscode.TreeItem {
 			this.tooltip = `CARTA process died unexpectedly (#${instance.id})`;
 			this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('notificationsWarningIcon.foreground'));
 		} else {
-			this.tooltip = instance.url ?? `Starting on localhost:${instance.port}...`;
+			this.tooltip = instance.url ?? `Starting on 127.0.0.1:${instance.port}...`;
 			this.iconPath = new vscode.ThemeIcon(instance.url ? 'vm-active' : 'loading~spin');
 		}
 

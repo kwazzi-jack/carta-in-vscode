@@ -169,7 +169,7 @@ export class CartaManager {
 		const process = spawn(validatedPath, [
 			...config.executableArgs,
 			'--no_browser',
-			'--host', 'localhost',
+			'--host', '127.0.0.1',
 			'-p', selectedPort.toString(),
 			'--top_level_folder', folderPath,
 			folderPath,
@@ -210,7 +210,7 @@ export class CartaManager {
 
 			// We monitor stdout/stderr for the CARTA startup message containing the auth token URL.
 			const checkIfReady = (output: string) => {
-				const match = output.match(/http:\/\/localhost:\d+\/\?token=[\w-]+/);
+				const match = output.match(/http:\/\/(?:localhost|127\.0\.0\.1):\d+\/\?token=[\w-]+/);
 				if (match) {
 					onReady(match[0]);
 				}
@@ -351,7 +351,7 @@ export class CartaManager {
 		const process = spawn(validatedPath, [
 			...config.executableArgs,
 			'--no_browser',
-			'--host', 'localhost',
+			'--host', '127.0.0.1',
 			'-p', port.toString(),
 			'--top_level_folder', folderPath,
 			folderPath,
@@ -377,7 +377,7 @@ export class CartaManager {
 			process.stdout?.on('data', (data: Buffer) => {
 				const str = data.toString();
 				this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
-				const match = str.match(/http:\/\/localhost:\d+\/\?token=[\w-]+/);
+				const match = str.match(/http:\/\/(?:localhost|127\.0\.0\.1):\d+\/\?token=[\w-]+/);
 				if (match && !resolved) {
 					resolved = true;
 					newInstance.url = match[0];
