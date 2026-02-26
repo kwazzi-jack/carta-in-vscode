@@ -10,4 +10,5 @@ vsc-extension-quickstart.md
 **/*.ts
 **/.vscode-test.*
 **/*.js.map
+out/test/**
 carta.AppImage.x86_64/
