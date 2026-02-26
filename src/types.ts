@@ -46,6 +46,8 @@ export interface CartaInstance {
 export interface CartaConfig {
 	/** Path to the 'carta' executable */
 	executablePath: string;
+	/** Additional command line arguments for CARTA */
+	executableArgs: string[];
 	/** Range of ports to scan for available server slots */
 	portRange: PortRange;
 	/** Max time in ms to wait for server startup before failing */
@@ -56,4 +58,6 @@ export interface CartaConfig {
 	viewerMode: 'simpleBrowser' | 'externalBrowser' | 'webview';
 	/** Optional path to a specific browser executable for 'externalBrowser' mode */
 	browserExecutablePath?: string;
+	/** Additional command line arguments for the browser */
+	browserExecutableArgs: string[];
 }

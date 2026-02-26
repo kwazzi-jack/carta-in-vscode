@@ -27,9 +27,11 @@ suite('Config Test Suite', () => {
 		test('should return a valid config object', () => {
 			const config = getConfig();
 			assert.ok(config.executablePath);
+			assert.ok(Array.isArray(config.executableArgs), 'executableArgs should be an array');
 			assert.ok(config.portRange);
 			assert.strictEqual(typeof config.maxConcurrentServers, 'number');
 			assert.ok(['webview', 'simpleBrowser', 'externalBrowser'].includes(config.viewerMode));
+			assert.ok(Array.isArray(config.browserExecutableArgs), 'browserExecutableArgs should be an array');
 		});
 	});
 });

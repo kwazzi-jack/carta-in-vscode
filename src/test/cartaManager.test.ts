@@ -69,6 +69,7 @@ suite('CartaManager Test Suite', () => {
 		try {
 			const config = {
 				executablePath: fakeExecutablePath,
+				executableArgs: [],
 				portRange: { start: testPort, end: testPort },
 				startupTimeout: 5000,
 				maxConcurrentServers: 5,
@@ -103,4 +104,62 @@ suite('CartaManager Test Suite', () => {
 			}
 		}
 	}).timeout(10000);
+
+	test('should fail immediately if executable is invalid (e.g. bash)', async () => {
+		const config = {
+			executablePath: '/bin/bash',
+			portRange: { start: 3000, end: 3010 },
+			startupTimeout: 1000,
+			maxConcurrentServers: 5,
+			viewerMode: 'webview',
+			executableArgs: []
+		} as any;
+
+		if (require('fs').existsSync('/bin/bash')) {
+			await assert.rejects(
+				manager.startInstance(config, require('os').tmpdir()),
+				/appears to be a system shell/
+			);
+			assert.strictEqual(manager.getInstances().length, 0, 'No instances should be created for invalid executable');
+		}
+	});
+
+	test('should pass extra arguments to the process', async function() {
+		const os = require('os');
+		const fs = require('fs');
+		const path = require('path');
+		if (os.platform() === 'win32') {
+			this.skip();
+		}
+
+		const tmpDir = os.tmpdir();
+		const scriptPath = path.join(tmpDir, 'test_args.sh');
+		// Script that checks for a specific argument and then prints the ready URL
+		const content = `#!/bin/bash
+if [[ "$*" == *"--magic-arg"* ]]; then
+  echo "CARTA is accessible at http://localhost:3300/?token=abc"
+fi
+while true; do sleep 1; done
+`;
+		fs.writeFileSync(scriptPath, content, { mode: 0o755 });
+
+		try {
+			const config = {
+				executablePath: scriptPath,
+				executableArgs: ['--magic-arg'],
+				portRange: { start: 3300, end: 3300 },
+				startupTimeout: 2000,
+				maxConcurrentServers: 5,
+				viewerMode: 'webview'
+			} as any;
+
+			const instance = await manager.startInstance(config, tmpDir);
+			assert.strictEqual(instance.status, 'running');
+			manager.stopInstance(instance.id);
+		} finally {
+			if (fs.existsSync(scriptPath)) {
+				fs.unlinkSync(scriptPath);
+			}
+		}
+	}).timeout(5000);
 });

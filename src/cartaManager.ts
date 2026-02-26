@@ -6,8 +6,10 @@
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import * as os from 'os';
+import * as vscode from 'vscode';
 import { listCandidatePorts, pickAvailablePort } from './ports';
 import { CartaConfig, CartaInstance } from './types';
+import { validateExecutablePath } from './validation';
 
 /**
  * Manages the lifecycle of multiple CARTA server instances.
@@ -24,6 +26,23 @@ export class CartaManager {
 	private readonly onDidChangeEmitter = new EventEmitter();
 	/** IDs of instances currently being stopped intentionally */
 	private readonly stoppingInstances = new Set<string>();
+	/** 
+	 * Shared output channel for all CARTA server logs. 
+	 * Provides visibility into stdout/stderr of the spawned processes.
+	 */
+	private readonly outputChannel = vscode.window.createOutputChannel('CARTA Servers');
+
+	/**
+	 * Removes ANSI escape sequences from a string to ensure clean output in the VS Code Output Channel.
+	 * This prevents [32m and other raw codes from cluttering the logs.
+	 * 
+	 * @param text The raw text string containing possible ANSI codes.
+	 * @returns Cleaned plain text string.
+	 */
+	private stripAnsi(text: string): string {
+		// eslint-disable-next-line no-control-regex
+		return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+	}
 
 	/**
 	 * Forcefully kills a CARTA server process and its associated port.
@@ -86,6 +105,9 @@ export class CartaManager {
 			throw new Error(`Maximum running CARTA servers reached (${config.maxConcurrentServers}).`);
 		}
 
+		// 1. Validate the executable path once before trying any ports.
+		const validatedPath = await validateExecutablePath(config.executablePath, { type: 'carta' });
+
 		// Find an available port from the configured range.
 		const initialPort = await pickAvailablePort(config.portRange, this.reservedPorts);
 		if (!initialPort) {
@@ -96,7 +118,7 @@ export class CartaManager {
 		const candidatePorts = [
 			initialPort,
 			...listCandidatePorts(config.portRange, this.reservedPorts).filter((port) => port !== initialPort),
-		];
+		].slice(0, 3); // Limit retries to 3 attempts.
 
 		let lastError: Error | undefined;
 
@@ -106,18 +128,22 @@ export class CartaManager {
 			}
 
 			try {
-				return await this.startInstanceOnPort(config, folderPath, selectedPort, cancellationToken);
+				return await this.startInstanceOnPort(config, validatedPath, folderPath, selectedPort, cancellationToken);
 			} catch (error) {
 				const startupError = error instanceof Error ? error : new Error('Failed to start CARTA server.');
 				lastError = startupError;
+				
 				if (startupError.message === 'Cancelled by user') {
 					throw startupError;
 				}
 
-				const canRetry = startupError.message.includes('closed before startup completed')
-					|| startupError.message.includes('Timed out waiting for CARTA server startup');
+				// Only retry if it looks like a port conflict.
+				// Port conflicts usually cause a quick exit with a non-zero code.
+				// If the exit code was 0, or if the error is path-related, don't retry.
+				const isLikelyPortConflict = startupError.message.includes('closed before startup completed') 
+					&& !startupError.message.includes('Exit code: 0');
 
-				if (!canRetry) {
+				if (!isLikelyPortConflict) {
 					throw startupError;
 				}
 			}
@@ -131,6 +157,7 @@ export class CartaManager {
 	 */
 	private async startInstanceOnPort(
 		config: CartaConfig,
+		validatedPath: string,
 		folderPath: string,
 		selectedPort: number,
 		cancellationToken?: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void }
@@ -139,7 +166,8 @@ export class CartaManager {
 		this.reservedPorts.add(selectedPort);
 
 		const instanceId = String(this.nextInstanceId++);
-		const process = spawn(config.executablePath, [
+		const process = spawn(validatedPath, [
+			...config.executableArgs,
 			'--no_browser',
 			'--host', 'localhost',
 			'-p', selectedPort.toString(),
@@ -206,8 +234,18 @@ export class CartaManager {
 
 			cancellationToken?.onCancellationRequested(onCancelled);
 
-			process.stdout?.on('data', (data: Buffer) => checkIfReady(data.toString()));
-			process.stderr?.on('data', (data: Buffer) => checkIfReady(data.toString()));
+			this.outputChannel.appendLine(`[Instance #${instanceId}] Spawning: ${validatedPath} ${config.executableArgs.join(' ')}`);
+
+			process.stdout?.on('data', (data: Buffer) => {
+				const str = data.toString();
+				this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
+				checkIfReady(str);
+			});
+			process.stderr?.on('data', (data: Buffer) => {
+				const str = data.toString();
+				this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(str)}`);
+				checkIfReady(str);
+			});
 
 			process.on('error', (err) => {
 				if (resolved) {
@@ -219,7 +257,7 @@ export class CartaManager {
 				reject(err);
 			});
 
-			process.on('close', () => {
+			process.on('close', (code) => {
 				const requested = this.stoppingInstances.has(instanceId);
 				if (requested) {
 					this.instances.delete(instanceId);
@@ -228,14 +266,21 @@ export class CartaManager {
 					this.fireChange();
 				} else {
 					// Unexpected termination.
-					instance.status = 'crashed';
+					if (!resolved) {
+						// If it hasn't reached 'running' state yet, it's a startup failure.
+						// We should not keep it in the instances map.
+						this.instances.delete(instanceId);
+					} else {
+						// It was running, but now it's gone.
+						instance.status = 'crashed';
+					}
 					this.reservedPorts.delete(selectedPort);
 					this.fireChange();
 				}
 
 				if (!resolved) {
 					resolved = true;
-					reject(new Error('CARTA process closed before startup completed.'));
+					reject(new Error(`CARTA process closed before startup completed. (Exit code: ${code})`));
 				}
 			});
 
@@ -291,6 +336,9 @@ export class CartaManager {
 		const folderPath = oldInstance.folderPath;
 		const port = oldInstance.port;
 
+		// Validate once before attempting to stop/restart
+		const validatedPath = await validateExecutablePath(config.executablePath, { type: 'carta' });
+
 		if (oldInstance.status !== 'crashed') {
 			this.terminateInstanceProcess(oldInstance);
 		}
@@ -300,7 +348,8 @@ export class CartaManager {
 		// Grace period for the OS to release the port socket.
 		await new Promise(resolve => setTimeout(resolve, 200));
 
-		const process = spawn(config.executablePath, [
+		const process = spawn(validatedPath, [
+			...config.executableArgs,
 			'--no_browser',
 			'--host', 'localhost',
 			'-p', port.toString(),
@@ -320,11 +369,15 @@ export class CartaManager {
 		this.instances.set(instanceId, newInstance);
 		this.fireChange();
 
+		this.outputChannel.appendLine(`[Instance #${instanceId}] Restarting: ${validatedPath} ${config.executableArgs.join(' ')}`);
+
 		return new Promise<CartaInstance>((resolve, reject) => {
 			let resolved = false;
 
 			process.stdout?.on('data', (data: Buffer) => {
-				const match = data.toString().match(/http:\/\/localhost:\d+\/\?token=[\w-]+/);
+				const str = data.toString();
+				this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
+				const match = str.match(/http:\/\/localhost:\d+\/\?token=[\w-]+/);
 				if (match && !resolved) {
 					resolved = true;
 					newInstance.url = match[0];
@@ -332,6 +385,10 @@ export class CartaManager {
 					this.fireChange();
 					resolve(newInstance);
 				}
+			});
+
+			process.stderr?.on('data', (data: Buffer) => {
+				this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(data.toString())}`);
 			});
 
 			process.on('error', (err) => {
@@ -344,13 +401,13 @@ export class CartaManager {
 				}
 			});
 
-			process.on('close', () => {
+			process.on('close', (code) => {
 				if (!resolved) {
 					resolved = true;
 					this.instances.delete(instanceId);
 					this.reservedPorts.delete(port);
 					this.fireChange();
-					reject(new Error('CARTA process closed during restart.'));
+					reject(new Error(`CARTA process closed during restart. (Exit code: ${code})`));
 				}
 			});
 		});

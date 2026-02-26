@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import { spawn } from 'child_process';
 import { CartaConfig } from './types';
+import { validateExecutablePath } from './validation';
 
 /** Internal tracking for active Webview panels and their current URLs */
 const webviewPanels = new Map<string, { panel: vscode.WebviewPanel, url: string }>();
@@ -21,10 +22,11 @@ async function openInSimpleBrowser(url: string): Promise<void> {
  * Spawns an external browser process directly using a specific executable.
  * @param executablePath Path to the browser binary (e.g. /usr/bin/google-chrome).
  * @param url The CARTA URL to open.
+ * @param args Additional command line arguments.
  */
-function openWithExecutable(executablePath: string, url: string): Promise<void> {
+function openWithExecutable(executablePath: string, url: string, args: string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn(executablePath, [url], {
+		const child = spawn(executablePath, [...args, url], {
 			detached: true,
 			stdio: 'ignore',
 			shell: false,
@@ -129,7 +131,8 @@ export async function openViewerForInstance(instanceId: string, url: string, fol
 
 	if (config.viewerMode === 'externalBrowser') {
 		if (config.browserExecutablePath) {
-			await openWithExecutable(config.browserExecutablePath, url);
+			const validatedPath = await validateExecutablePath(config.browserExecutablePath, { type: 'browser' });
+			await openWithExecutable(validatedPath, url, config.browserExecutableArgs);
 			return;
 		}
 

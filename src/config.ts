@@ -19,11 +19,13 @@ export function getConfig(): CartaConfig {
 
 	return {
 		executablePath: cfg.get<string>('executablePath', 'carta')?.trim() || 'carta',
+		executableArgs: cfg.get<string[]>('executableArgs', []),
 		portRange: parsePortRange(portRangeRaw),
 		startupTimeout: cfg.get<number>('startupTimeout', -1),
 		maxConcurrentServers: cfg.get<number>('maxConcurrentServers', 5),
 		viewerMode: cfg.get<'webview' | 'simpleBrowser' | 'externalBrowser'>('viewerMode', 'webview'),
 		browserExecutablePath: cfg.get<string>('browserExecutablePath', '')?.trim() || undefined,
+		browserExecutableArgs: cfg.get<string[]>('browserExecutableArgs', []),
 	};
 }
 

@@ -113,6 +113,29 @@ async function handleCrashedInstance(instanceId: string, manager: CartaManager, 
 }
 
 /**
+ * Provides a helpful error message when an executable is missing or invalid.
+ */
+async function handleExecutableError(error: unknown, type: 'carta' | 'browser') {
+	const message = error instanceof Error ? error.message : String(error);
+	
+	const buttons: string[] = ['Open Settings'];
+	if (type === 'carta') {
+		buttons.push('Download CARTA');
+	}
+
+	const selection = await vscode.window.showErrorMessage(
+		`CARTA: ${type === 'carta' ? 'CARTA executable' : 'Browser'} error: ${message}`,
+		...buttons
+	);
+
+	if (selection === 'Open Settings') {
+		await vscode.commands.executeCommand('workbench.action.openSettings', 'carta-in-vscode');
+	} else if (selection === 'Download CARTA') {
+		await vscode.env.openExternal(vscode.Uri.parse('https://cartavis.org/#download'));
+	}
+}
+
+/**
  * Extension entry point. Called by VS Code when any activationEvents are triggered.
  */
 export function activate(context: vscode.ExtensionContext) {
@@ -163,12 +186,11 @@ export function activate(context: vscode.ExtensionContext) {
 				await openViewerForInstance(instance.id, instance.url, path.basename(instance.folderPath), config, context.extensionUri);
 			}
 		} catch (error: unknown) {
-			const message = error instanceof Error ? error.message : 'Failed to start CARTA server.';
-			if (message === 'Cancelled by user') {
+			if (error instanceof Error && error.message === 'Cancelled by user') {
 				vscode.window.showInformationMessage('CARTA: Startup cancelled');
 				return;
 			}
-			vscode.window.showErrorMessage(`CARTA: ${message}`);
+			await handleExecutableError(error, 'carta');
 		}
 	}
 
@@ -288,7 +310,11 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 
-		await openViewerForInstance(instance.id, instance.url, path.basename(instance.folderPath), config, context.extensionUri);
+		try {
+			await openViewerForInstance(instance.id, instance.url, path.basename(instance.folderPath), config, context.extensionUri);
+		} catch (error: unknown) {
+			await handleExecutableError(error, 'browser');
+		}
 	});
 
 	// Command: Kill a specific instance from the Sidebar
@@ -343,8 +369,7 @@ export function activate(context: vscode.ExtensionContext) {
 				await openViewerForInstance(newInstance.id, newInstance.url, path.basename(newInstance.folderPath), config, context.extensionUri);
 			}
 		} catch (error: unknown) {
-			const message = error instanceof Error ? error.message : 'Failed to restart CARTA server.';
-			vscode.window.showErrorMessage(`CARTA: ${message}`);
+			await handleExecutableError(error, 'carta');
 		}
 	});
 
