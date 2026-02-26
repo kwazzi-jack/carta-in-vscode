@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented here.
 
+## [0.1.2] - 2026-02-26
+
+### Added
+- **Executable Path Validation**: Robust sanitisation and validation of executable paths for both CARTA and browsers.
+- **Command-Line Arguments**: New `executableArgs` and `browserExecutableArgs` settings to pass custom flags to processes (e.g., `--log_performance`).
+- **CARTA Servers Output Channel**: A dedicated live log stream in VS Code for monitoring server stdout/stderr.
+- **ANSI Escape Stripping**: Automatic removal of raw ANSI colour codes from logs for better readability in the Output panel.
+- **macOS App Bundle Support**: Direct support for selecting `.app` bundles as executable paths.
+- **Improved UX for Missing Binaries**: New error prompts with direct links to the CARTA download page and extension settings.
+- **Shell Protection**: Heuristic checks to prevent system shells (like `bash` or `zsh`) from being mistakenly configured as the CARTA executable.
+
+### Fixed
+- **Startup Leak**: Resolved an issue where failed startup attempts would leave "ghost" or "crashed" instances in the sidebar.
+- **Retry Storms**: Capped automatic port retries and improved error analysis to stop immediately on configuration failures.
+- **Documentation**: Overhauled `README.md` with more detailed information.
+- **Package Optimisation**: Updated `.vscodeignore` to exclude compiled test files from the final extension package.
+
+### Security
+- Integrated pre-spawn validation to ensure only valid, executable files are launched by the extension.
+
 ## [0.1.1] - 2026-02-25
 
 ### Fixed
