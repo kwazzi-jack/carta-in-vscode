@@ -2,7 +2,7 @@
   "name": "carta-in-vscode",
   "displayName": "Carta in VS Code",
   "description": "Unofficial extension to run and view CARTA tool within VS Code. The official maintainers of CARTA can be found here https://cartavis.org/. The owners of CARTA were not involved in the development of this tool.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "kwazzi-jack",
   "license": "MIT",
   "icon": "images/carta-for-vscode-icon.png",
@@ -67,6 +67,14 @@
           "default": "carta",
           "description": "Path to the CARTA executable. Defaults to 'carta' (assumes it's on your PATH)."
         },
+        "carta-in-vscode.executableArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional command line arguments to pass to the CARTA executable."
+        },
         "carta-in-vscode.portRange": {
           "type": "string",
           "default": "3002-3099",
@@ -100,6 +108,14 @@
           "type": "string",
           "default": "",
           "description": "Optional browser executable path used when viewerMode is externalBrowser. Leave empty to use the OS default browser."
+        },
+        "carta-in-vscode.browserExecutableArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional command line arguments to pass to the browser executable."
         }
       }
     },
