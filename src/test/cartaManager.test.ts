@@ -54,7 +54,7 @@ suite('CartaManager Test Suite', () => {
 		const os = require('os');
 		const path = require('path');
 		const fs = require('fs');
-		
+
 		const tmpDir = os.tmpdir();
 		const fakeExecutablePath = path.join(tmpDir, os.platform() === 'win32' ? 'fake_carta_crash.bat' : 'fake_carta_crash.sh');
 		const testPort = 3200;
@@ -93,7 +93,7 @@ suite('CartaManager Test Suite', () => {
 			await onCrashed;
 
 			assert.strictEqual(instance.status, 'crashed');
-			
+
 			// Cleanup the crashed instance
 			manager.stopInstance(instance.id);
 			assert.strictEqual(manager.getInstances().length, 0);

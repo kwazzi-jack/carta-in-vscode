@@ -26,8 +26,8 @@ export class CartaManager {
 	private readonly onDidChangeEmitter = new EventEmitter();
 	/** IDs of instances currently being stopped intentionally */
 	private readonly stoppingInstances = new Set<string>();
-	/** 
-	 * Shared output channel for all CARTA server logs. 
+	/**
+	 * Shared output channel for all CARTA server logs.
 	 * Provides visibility into stdout/stderr of the spawned processes.
 	 */
 	private readonly outputChannel = vscode.window.createOutputChannel('CARTA Servers');
@@ -35,7 +35,7 @@ export class CartaManager {
 	/**
 	 * Removes ANSI escape sequences from a string to ensure clean output in the VS Code Output Channel.
 	 * This prevents [32m and other raw codes from cluttering the logs.
-	 * 
+	 *
 	 * @param text The raw text string containing possible ANSI codes.
 	 * @returns Cleaned plain text string.
 	 */
@@ -132,7 +132,7 @@ export class CartaManager {
 			} catch (error) {
 				const startupError = error instanceof Error ? error : new Error('Failed to start CARTA server.');
 				lastError = startupError;
-				
+
 				if (startupError.message === 'Cancelled by user') {
 					throw startupError;
 				}
@@ -140,7 +140,7 @@ export class CartaManager {
 				// Only retry if it looks like a port conflict.
 				// Port conflicts usually cause a quick exit with a non-zero code.
 				// If the exit code was 0, or if the error is path-related, don't retry.
-				const isLikelyPortConflict = startupError.message.includes('closed before startup completed') 
+				const isLikelyPortConflict = startupError.message.includes('closed before startup completed')
 					&& !startupError.message.includes('Exit code: 0');
 
 				if (!isLikelyPortConflict) {
@@ -210,7 +210,7 @@ export class CartaManager {
 
 			// We monitor stdout/stderr for the CARTA startup message containing the auth token URL.
 			const checkIfReady = (output: string) => {
-				const match = output.match(/http:\/\/(?:localhost|127\.0\.0\.1):\d+\/\?token=[\w-]+/);
+				const match = output.match(/http:\/\/[\w.-]+:\d+\/\?token=[\w-]+/);
 				if (match) {
 					onReady(match[0]);
 				}
@@ -377,7 +377,7 @@ export class CartaManager {
 			process.stdout?.on('data', (data: Buffer) => {
 				const str = data.toString();
 				this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
-				const match = str.match(/http:\/\/(?:localhost|127\.0\.0\.1):\d+\/\?token=[\w-]+/);
+				const match = str.match(/http:\/\/[\w.-]+:\d+\/\?token=[\w-]+/);
 				if (match && !resolved) {
 					resolved = true;
 					newInstance.url = match[0];
