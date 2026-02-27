@@ -39,14 +39,43 @@ suite('CartaManager Test Suite', () => {
 		assert.strictEqual(manager.stopAll(), 0);
 	});
 
-	test('onDidChange should fire on state changes', (done) => {
-		const unsubscribe = manager.onDidChange(() => {
-			unsubscribe();
-			done();
-		});
+	test('onDidChange should fire on state changes', async function() {
+		const os = require('os');
+		const fs = require('fs');
+		const path = require('path');
+		const tmpDir = os.tmpdir();
+		const scriptPath = path.join(tmpDir, 'test_change.sh');
+		const content = `#!/bin/bash\necho "CARTA is accessible at http://localhost:3400/?token=abc"\nsleep 100\n`;
+		fs.writeFileSync(scriptPath, content, { mode: 0o755 });
 
-		// Trigger a change via stopAll (even if 0)
-		manager.stopAll();
+		try {
+			const config = {
+				executablePath: scriptPath,
+				executableArgs: [],
+				portRange: { start: 3400, end: 3400 },
+				startupTimeout: 2000,
+				maxConcurrentServers: 5,
+				viewerMode: 'webview'
+			} as any;
+
+			let fired = false;
+			const unsubscribe = manager.onDidChange(() => {
+				fired = true;
+			});
+
+			await manager.startInstance(config, tmpDir);
+			assert.strictEqual(fired, true, 'Should have fired onDidChange during startInstance');
+			
+			fired = false;
+			manager.stopAll();
+			assert.strictEqual(fired, true, 'Should have fired onDidChange during stopAll');
+
+			unsubscribe();
+		} finally {
+			if (fs.existsSync(scriptPath)) {
+				fs.unlinkSync(scriptPath);
+			}
+		}
 	});
 
 	test('should mark instance as crashed if process exits unexpectedly', async function() {

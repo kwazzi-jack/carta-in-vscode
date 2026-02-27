@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented here.
 
+## [0.1.3] - 2026-02-27
+
+### Added
+- **Remote SSH Support**: Full compatibility with VS Code Remote - SSH, including automatic port forwarding and external URI resolution.
+- **Enhanced Logging**: Integrated a dedicated logging module for better troubleshooting and visibility into the extension's internal state.
+
+### Fixed
+- **UI Icons**: Updated `$(add-small)` icons to `$(add)` for better rendering across different VS Code versions.
+- **Process Lifecycle**: Improved process termination by using process groups (detached mode) to ensure all child processes are correctly killed.
+- **Port Detection**: Switched to `localhost` for port availability checks to improve compatibility in varied network environments.
+- **CARTA URL Parsing**: Robust detection and extraction of base URLs and authentication tokens from server output.
+
 ## [0.1.2] - 2026-02-26
 
 ### Added

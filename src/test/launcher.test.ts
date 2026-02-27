@@ -130,7 +130,8 @@ suite('CARTA Launcher Integration Test Suite', () => {
 
 		try {
 			const instance = await manager.startInstance(customConfig, tmpDir);
-			assert.strictEqual(instance.base_url, `http://localhost:${testPort}/?token=test-token`);
+			assert.strictEqual(instance.base_url, `http://localhost:${testPort}/`);
+			assert.strictEqual(instance.authToken, 'test-token');
 			manager.stopInstance(instance.id);
 		} finally {
 			if (fs.existsSync(fakeExecutablePath)) {
