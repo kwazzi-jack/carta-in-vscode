@@ -5,11 +5,14 @@
 
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
+import { randomUUID } from 'crypto';
 import * as os from 'os';
 import * as vscode from 'vscode';
 import { listCandidatePorts, pickAvailablePort } from './ports';
 import { CartaConfig, CartaInstance } from './types';
 import { validateExecutablePath } from './validation';
+import process from 'process';
+import { logger } from './logger';
 
 /**
  * Manages the lifecycle of multiple CARTA server instances.
@@ -49,11 +52,26 @@ export class CartaManager {
 	 * @param instance The CartaInstance to terminate.
 	 */
 	private terminateInstanceProcess(instance: CartaInstance): void {
+		logger.info(`Terminating process group for instance #${instance.id} (PGID: ${instance.process.pid}) on port ${instance.port}.`);
 		this.stoppingInstances.add(instance.id);
-		instance.process.kill('SIGKILL');
+		if (instance.process.pid) {
+			try {
+				// Use negative PID to kill the entire process group. This is a POSIX feature.
+				process.kill(-instance.process.pid, 'SIGKILL');
+			} catch (e) {
+				logger.error(`Failed to kill process group for instance #${instance.id} (PGID: ${instance.process.pid}):`, e);
+				// Fallback to killing just the main process if the group kill fails
+				try {
+					instance.process.kill('SIGKILL');
+				} catch (e2) {
+					logger.error(`Fallback process kill also failed for PID ${instance.process.pid}:`, e2);
+				}
+			}
+		}
 
 		// On Linux, we use fuser as a fallback to ensure the port is released quickly.
 		if (os.platform() === 'linux') {
+			logger.debug(`[Linux] Running fuser to release port ${instance.port}.`);
 			const killer = spawn('fuser', ['-k', `${instance.port}/tcp`], {
 				shell: false,
 				stdio: 'ignore',
@@ -101,203 +119,217 @@ export class CartaManager {
 	 * @returns A Promise resolving to the running CartaInstance.
 	 */
 	async startInstance(config: CartaConfig, folderPath: string, cancellationToken?: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void }): Promise<CartaInstance> {
+		logger.info(`Requested to start CARTA for folder: ${folderPath}`);
 		if (this.instances.size >= config.maxConcurrentServers) {
+			logger.warn(`Cannot start new instance: maximum server limit reached (${config.maxConcurrentServers}).`);
 			throw new Error(`Maximum running CARTA servers reached (${config.maxConcurrentServers}).`);
 		}
 
 		// 1. Validate the executable path once before trying any ports.
 		const validatedPath = await validateExecutablePath(config.executablePath, { type: 'carta' });
+		logger.debug(`Validated CARTA executable path: ${validatedPath}`);
 
 		// Find an available port from the configured range.
 		const initialPort = await pickAvailablePort(config.portRange, this.reservedPorts);
 		if (!initialPort) {
+			logger.error(`Failed to find any free ports in range ${config.portRange.start}-${config.portRange.end}.`);
 			throw new Error(`No free ports found in range ${config.portRange.start}-${config.portRange.end}.`);
 		}
+		logger.debug(`Initial candidate port: ${initialPort}`);
 
 		// List potential ports and try starting the server on them sequentially.
 		const candidatePorts = [
 			initialPort,
 			...listCandidatePorts(config.portRange, this.reservedPorts).filter((port) => port !== initialPort),
 		].slice(0, 3); // Limit retries to 3 attempts.
+		logger.debug(`Startup attempt ports: ${candidatePorts.join(', ')}`);
 
 		let lastError: Error | undefined;
 
 		for (const selectedPort of candidatePorts) {
 			if (cancellationToken?.isCancellationRequested) {
+				logger.info('CARTA startup cancelled by user.');
 				throw new Error('Cancelled by user');
 			}
 
 			try {
+				logger.info(`Attempting to start CARTA on port ${selectedPort}...`);
 				return await this.startInstanceOnPort(config, validatedPath, folderPath, selectedPort, cancellationToken);
 			} catch (error) {
 				const startupError = error instanceof Error ? error : new Error('Failed to start CARTA server.');
 				lastError = startupError;
+				logger.warn(`Failed to start CARTA on port ${selectedPort}: ${startupError.message}`);
 
 				if (startupError.message === 'Cancelled by user') {
 					throw startupError;
 				}
 
-				// Only retry if it looks like a port conflict.
-				// Port conflicts usually cause a quick exit with a non-zero code.
-				// If the exit code was 0, or if the error is path-related, don't retry.
 				const isLikelyPortConflict = startupError.message.includes('closed before startup completed')
 					&& !startupError.message.includes('Exit code: 0');
 
 				if (!isLikelyPortConflict) {
+					logger.error(`Startup failure on port ${selectedPort} does not appear to be a port conflict. Aborting retries.`);
 					throw startupError;
 				}
+				logger.info(`Port ${selectedPort} seems to be in use. Trying next available port.`);
 			}
 		}
 
+		logger.error('Exhausted all candidate ports. Failed to start CARTA.');
 		throw lastError ?? new Error('No usable ports available in the configured range.');
 	}
 
 	/**
 	 * Internal logic to spawn the CARTA executable on a specific port and wait for it to be ready.
 	 */
-	private async startInstanceOnPort(
-		config: CartaConfig,
-		validatedPath: string,
-		folderPath: string,
-		selectedPort: number,
-		cancellationToken?: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void }
-	): Promise<CartaInstance> {
-
-		this.reservedPorts.add(selectedPort);
-
-		const instanceId = String(this.nextInstanceId++);
-		const process = spawn(validatedPath, [
-			...config.executableArgs,
-			'--no_browser',
-			'--host', '127.0.0.1',
-			'-p', selectedPort.toString(),
-			'--top_level_folder', folderPath,
-			folderPath,
-		], { shell: false });
-
-		const instance: CartaInstance = {
-			id: instanceId,
-			process,
-			folderPath,
-			port: selectedPort,
-			startedAt: Date.now(),
-			status: 'starting',
-		};
-
-		this.instances.set(instanceId, instance);
-		this.fireChange();
-
-		return new Promise<CartaInstance>((resolve, reject) => {
-			let resolved = false;
-
-			const cleanupStartingFailure = () => {
-				this.instances.delete(instanceId);
-				this.reservedPorts.delete(selectedPort);
-				this.fireChange();
+		private async startInstanceOnPort(
+			config: CartaConfig,
+			validatedPath: string,
+			folderPath: string,
+			selectedPort: number,
+			cancellationToken?: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void }
+		): Promise<CartaInstance> {
+	
+			this.reservedPorts.add(selectedPort);
+			const instanceId = String(this.nextInstanceId++);
+	
+			const args = [
+				...config.executableArgs,
+				'--no_browser',
+				'--host', '127.0.0.1',
+				'-p', selectedPort.toString(),
+				'--top_level_folder', folderPath,
+				folderPath,
+			];
+			logger.info(`[Instance #${instanceId}] Spawning process...`);
+			logger.debug(` > Path: ${validatedPath}`);
+			logger.debug(` > Args: ${args.join(' ')}`);
+	
+			const cartaProcess = spawn(validatedPath, args, { shell: false, detached: true });
+			logger.info(`[Instance #${instanceId}] Process spawned with PID ${cartaProcess.pid}.`);
+	
+			const instance: CartaInstance = {
+				id: instanceId,
+				process: cartaProcess,
+				folderPath,
+				port: selectedPort,
+				startedAt: Date.now(),
+				status: 'starting',
 			};
-
-			const onReady = (url: string) => {
-				if (resolved) {
-					return;
-				}
-
-				resolved = true;
-				instance.url = url;
-				instance.status = 'running';
-				this.fireChange();
-				resolve(instance);
-			};
-
-			// We monitor stdout/stderr for the CARTA startup message containing the auth token URL.
-			const checkIfReady = (output: string) => {
-				const match = output.match(/http:\/\/[\w.-]+:\d+\/\?token=[\w-]+/);
-				if (match) {
-					onReady(match[0]);
-				}
-			};
-
-			const onCancelled = () => {
-				if (resolved) {
-					return;
-				}
-
-				resolved = true;
-				this.terminateInstanceProcess(instance);
-				cleanupStartingFailure();
-				reject(new Error('Cancelled by user'));
-			};
-
-			if (cancellationToken?.isCancellationRequested) {
-				onCancelled();
-				return;
-			}
-
-			cancellationToken?.onCancellationRequested(onCancelled);
-
-			this.outputChannel.appendLine(`[Instance #${instanceId}] Spawning: ${validatedPath} ${config.executableArgs.join(' ')}`);
-
-			process.stdout?.on('data', (data: Buffer) => {
-				const str = data.toString();
-				this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
-				checkIfReady(str);
-			});
-			process.stderr?.on('data', (data: Buffer) => {
-				const str = data.toString();
-				this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(str)}`);
-				checkIfReady(str);
-			});
-
-			process.on('error', (err) => {
-				if (resolved) {
-					return;
-				}
-
-				resolved = true;
-				cleanupStartingFailure();
-				reject(err);
-			});
-
-			process.on('close', (code) => {
-				const requested = this.stoppingInstances.has(instanceId);
-				if (requested) {
+	
+			this.instances.set(instanceId, instance);
+			this.fireChange();
+	
+			return new Promise<CartaInstance>((resolve, reject) => {
+				let resolved = false;
+	
+				const cleanupStartingFailure = () => {
+					logger.warn(`[Instance #${instanceId}] Cleaning up after startup failure.`);
 					this.instances.delete(instanceId);
-					this.stoppingInstances.delete(instanceId);
 					this.reservedPorts.delete(selectedPort);
 					this.fireChange();
-				} else {
-					// Unexpected termination.
-					if (!resolved) {
-						// If it hasn't reached 'running' state yet, it's a startup failure.
-						// We should not keep it in the instances map.
-						this.instances.delete(instanceId);
-					} else {
-						// It was running, but now it's gone.
-						instance.status = 'crashed';
-					}
-					this.reservedPorts.delete(selectedPort);
-					this.fireChange();
-				}
-
-				if (!resolved) {
-					resolved = true;
-					reject(new Error(`CARTA process closed before startup completed. (Exit code: ${code})`));
-				}
-			});
-
-			if (config.startupTimeout > 0) {
-				setTimeout(() => {
+				};
+	
+				const onReady = (baseUrl: string, token: string) => {
 					if (resolved) {
 						return;
 					}
-
+					logger.info(`[Instance #${instanceId}] CARTA server is ready.`);
+					logger.debug(` > Base URL: ${baseUrl}`);
+					logger.debug(` > Token: ${token}`);
+					resolved = true;
+					instance.base_url = baseUrl;
+					instance.authToken = token;
+					instance.status = 'running';
+					this.fireChange();
+					resolve(instance);
+				};
+	
+				const checkIfReady = (output: string) => {
+					const match = output.match(/(https?:\/\/[\w.-]+:\d+\/)\?token=([\w-]+)/);
+					if (match && match[1] && match[2]) {
+						onReady(match[1], match[2]);
+					}
+				};
+	
+				const onCancelled = () => {
+					if (resolved) {
+						return;
+					}
+					logger.info(`[Instance #${instanceId}] Startup cancelled by user.`);
 					resolved = true;
 					this.terminateInstanceProcess(instance);
 					cleanupStartingFailure();
-					reject(new Error('Timed out waiting for CARTA server startup.'));
-				}, config.startupTimeout);
-			}
-		});
-	}
+					reject(new Error('Cancelled by user'));
+				};
+	
+				if (cancellationToken?.isCancellationRequested) {
+					onCancelled();
+					return;
+				}
+				cancellationToken?.onCancellationRequested(onCancelled);
+	
+				this.outputChannel.appendLine(`[Instance #${instanceId}] Spawning: ${validatedPath} ${args.join(' ')}`);
+	
+				cartaProcess.stdout?.on('data', (data: Buffer) => {
+					const str = data.toString();
+					this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
+					checkIfReady(str);
+				});
+				cartaProcess.stderr?.on('data', (data: Buffer) => {
+					const str = data.toString();
+					this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(str)}`);
+					checkIfReady(str);
+				});
+	
+				cartaProcess.on('error', (err) => {
+					if (resolved) {
+						return;
+					}
+					logger.error(`[Instance #${instanceId}] Process failed to spawn: ${err.message}`);
+					resolved = true;
+					cleanupStartingFailure();
+					reject(err);
+				});
+	
+				cartaProcess.on('close', (code) => {
+					const requested = this.stoppingInstances.has(instanceId);
+					if (requested) {
+						logger.info(`[Instance #${instanceId}] Process closed as requested (Exit code: ${code}).`);
+						this.instances.delete(instanceId);
+						this.stoppingInstances.delete(instanceId);
+						this.reservedPorts.delete(selectedPort);
+					} else {
+						logger.warn(`[Instance #${instanceId}] Process terminated unexpectedly (Exit code: ${code}).`);
+						if (!resolved) {
+							this.instances.delete(instanceId);
+						} else {
+							instance.status = 'crashed';
+						}
+						this.reservedPorts.delete(selectedPort);
+					}
+					this.fireChange();
+	
+					if (!resolved) {
+						resolved = true;
+						reject(new Error(`CARTA process closed before startup completed. (Exit code: ${code})`));
+					}
+				});
+	
+				if (config.startupTimeout > 0) {
+					setTimeout(() => {
+						if (resolved) {
+							return;
+						}
+						logger.error(`[Instance #${instanceId}] Timed out after ${config.startupTimeout}ms waiting for startup.`);
+						resolved = true;
+						this.terminateInstanceProcess(instance);
+						cleanupStartingFailure();
+						reject(new Error('Timed out waiting for CARTA server startup.'));
+					}, config.startupTimeout);
+				}
+			});
+		}
 
 	/**
 	 * Kills a managed CARTA server and frees its port.
@@ -306,15 +338,18 @@ export class CartaManager {
 	stopInstance(instanceId: string): boolean {
 		const instance = this.instances.get(instanceId);
 		if (!instance) {
+			logger.warn(`Stop command ignored: instance #${instanceId} not found.`);
 			return false;
 		}
 
 		if (instance.status === 'crashed') {
+			logger.info(`Clearing crashed instance #${instanceId}.`);
 			this.instances.delete(instanceId);
 			this.fireChange();
 			return true;
 		}
 
+		logger.info(`Stopping instance #${instanceId}.`);
 		this.terminateInstanceProcess(instance);
 		this.instances.delete(instanceId);
 		this.reservedPorts.delete(instance.port);
@@ -330,13 +365,14 @@ export class CartaManager {
 	async restartInstance(instanceId: string, config: CartaConfig): Promise<CartaInstance> {
 		const oldInstance = this.instances.get(instanceId);
 		if (!oldInstance) {
+			logger.error(`Restart failed: instance #${instanceId} not found.`);
 			throw new Error(`Instance ${instanceId} not found.`);
 		}
+		logger.info(`Restarting instance #${instanceId} on port ${oldInstance.port}.`);
 
 		const folderPath = oldInstance.folderPath;
 		const port = oldInstance.port;
 
-		// Validate once before attempting to stop/restart
 		const validatedPath = await validateExecutablePath(config.executablePath, { type: 'carta' });
 
 		if (oldInstance.status !== 'crashed') {
@@ -345,21 +381,26 @@ export class CartaManager {
 		this.instances.delete(instanceId);
 		this.fireChange();
 
-		// Grace period for the OS to release the port socket.
 		await new Promise(resolve => setTimeout(resolve, 200));
 
-		const process = spawn(validatedPath, [
+		const args = [
 			...config.executableArgs,
 			'--no_browser',
 			'--host', '127.0.0.1',
 			'-p', port.toString(),
 			'--top_level_folder', folderPath,
 			folderPath,
-		], { shell: false });
+		];
+		logger.info(`[Instance #${instanceId}] Spawning process for restart...`);
+		logger.debug(` > Path: ${validatedPath}`);
+		logger.debug(` > Args: ${args.join(' ')}`);
+
+		const cartaProcess = spawn(validatedPath, args, { shell: false, detached: true });
+		logger.info(`[Instance #${instanceId}] Process spawned with PID ${cartaProcess.pid} for restart.`);
 
 		const newInstance: CartaInstance = {
 			id: instanceId,
-			process,
+			process: cartaProcess,
 			folderPath,
 			port,
 			startedAt: Date.now(),
@@ -369,40 +410,56 @@ export class CartaManager {
 		this.instances.set(instanceId, newInstance);
 		this.fireChange();
 
-		this.outputChannel.appendLine(`[Instance #${instanceId}] Restarting: ${validatedPath} ${config.executableArgs.join(' ')}`);
+		this.outputChannel.appendLine(`[Instance #${instanceId}] Restarting: ${validatedPath} ${args.join(' ')}`);
 
 		return new Promise<CartaInstance>((resolve, reject) => {
 			let resolved = false;
 
-			process.stdout?.on('data', (data: Buffer) => {
+			const onReady = (baseUrl: string, token: string) => {
+				if (resolved) return;
+				logger.info(`[Instance #${instanceId}] Restarted server is ready.`);
+				logger.debug(` > Base URL: ${baseUrl}`);
+				logger.debug(` > Token: ${token}`);
+				resolved = true;
+				newInstance.base_url = baseUrl;
+				newInstance.authToken = token;
+				newInstance.status = 'running';
+				this.fireChange();
+				resolve(newInstance);
+			};
+
+			const checkIfReady = (output: string) => {
+				const match = output.match(/(https?:\/\/[\w.-]+:\d+\/)\?token=([\w-]+)/);
+				if (match && match[1] && match[2]) {
+					onReady(match[1], match[2]);
+				}
+			};
+
+			cartaProcess.stdout?.on('data', (data: Buffer) => {
 				const str = data.toString();
 				this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
-				const match = str.match(/http:\/\/[\w.-]+:\d+\/\?token=[\w-]+/);
-				if (match && !resolved) {
-					resolved = true;
-					newInstance.url = match[0];
-					newInstance.status = 'running';
-					this.fireChange();
-					resolve(newInstance);
-				}
+				checkIfReady(str);
 			});
 
-			process.stderr?.on('data', (data: Buffer) => {
-				this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(data.toString())}`);
+			cartaProcess.stderr?.on('data', (data: Buffer) => {
+				const str = data.toString();
+				this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(str)}`);
+				checkIfReady(str);
 			});
 
-			process.on('error', (err) => {
+			cartaProcess.on('error', (err) => {
+				if (resolved) return;
+				logger.error(`[Instance #${instanceId}] Restart process failed to spawn: ${err.message}`);
+				resolved = true;
+				this.instances.delete(instanceId);
+				this.reservedPorts.delete(port);
+				this.fireChange();
+				reject(err);
+			});
+
+			cartaProcess.on('close', (code) => {
 				if (!resolved) {
-					resolved = true;
-					this.instances.delete(instanceId);
-					this.reservedPorts.delete(port);
-					this.fireChange();
-					reject(err);
-				}
-			});
-
-			process.on('close', (code) => {
-				if (!resolved) {
+					logger.error(`[Instance #${instanceId}] Restarted process closed before becoming ready (Exit code: ${code}).`);
 					resolved = true;
 					this.instances.delete(instanceId);
 					this.reservedPorts.delete(port);
@@ -419,6 +476,11 @@ export class CartaManager {
 	 */
 	stopAll(): number {
 		const currentInstances = this.getInstances();
+		if (currentInstances.length === 0) {
+			logger.info('Stop all command ignored: no running instances.');
+			return 0;
+		}
+		logger.info(`Stopping all ${currentInstances.length} running CARTA instances.`);
 		for (const instance of currentInstances) {
 			if (instance.status !== 'crashed') {
 				this.terminateInstanceProcess(instance);

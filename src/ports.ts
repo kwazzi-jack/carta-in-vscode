@@ -63,7 +63,7 @@ export async function isPortInUse(port: number): Promise<boolean> {
 		socket.once('timeout', () => finish(false));
 		socket.once('error', () => finish(false));
 
-		socket.connect(port, '127.0.0.1');
+		socket.connect(port, 'localhost');
 	});
 }
 

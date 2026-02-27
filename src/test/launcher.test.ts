@@ -51,7 +51,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 		try {
 			const instance = await manager.startInstance(startConfig, testDir);
 
-			assert.ok(instance.url, 'Instance should have a URL');
+			assert.ok(instance.base_url, 'Instance should have a URL');
 
 			let connectedLogSeen = false;
 			const logPromise = new Promise<void>((resolve) => {
@@ -69,7 +69,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 			});
 
 			await new Promise<void>((resolve, reject) => {
-				const req = http.get(instance.url!, (res) => {
+				const req = http.get(instance.base_url!, (res) => {
 					res.on('data', () => {});
 					res.on('end', () => resolve());
 				});
@@ -78,7 +78,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 
 			await logPromise;
 
-			assert.ok(instance.url.includes(`:${instance.port}`), 'URL should contain the correct port');
+			assert.ok(instance.base_url.includes(`:${instance.port}`), 'URL should contain the correct port');
 
 			manager.stopInstance(instance.id);
 		} catch (error) {
@@ -130,7 +130,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 
 		try {
 			const instance = await manager.startInstance(customConfig, tmpDir);
-			assert.strictEqual(instance.url, `http://localhost:${testPort}/?token=test-token`);
+			assert.strictEqual(instance.base_url, `http://localhost:${testPort}/?token=test-token`);
 			manager.stopInstance(instance.id);
 		} finally {
 			if (fs.existsSync(fakeExecutablePath)) {
@@ -170,7 +170,7 @@ suite('CARTA Launcher Integration Test Suite', () => {
 		try {
 			const instance = await manager.startInstance(appImageConfig, testDir);
 			assert.strictEqual(instance.status, 'running');
-			assert.ok(instance.url, 'AppImage instance should have a URL');
+			assert.ok(instance.base_url, 'AppImage instance should have a URL');
 
 			const stopped = manager.stopInstance(instance.id);
 			assert.strictEqual(stopped, true);

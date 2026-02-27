@@ -32,8 +32,10 @@ export interface CartaInstance {
 	folderPath: string;
 	/** The network port the server is listening on */
 	port: number;
-	/** The authenticated URL used to access the CARTA web interface */
-	url?: string;
+	/** The authentication token to open a session with CARTA */
+	authToken?: string;
+	/** The base URL used to access the CARTA web interface */
+	base_url?: string;
 	/** Epoch timestamp (ms) of when the instance was initiated */
 	startedAt: number;
 	/** Current operational status */

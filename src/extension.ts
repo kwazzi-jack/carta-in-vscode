@@ -11,6 +11,7 @@ import { CartaManager } from './cartaManager';
 import { getConfig, getWorkspaceFolderPath, promptForTargetFolder, validateLaunchCapacity } from './config';
 import { RecentFoldersTreeProvider, RunningViewerItem, RunningViewersTreeProvider } from './views';
 import { CartaInstance } from './types';
+import { logger } from './logger';
 
 /**
  * Extracts a valid CARTA instance ID from command arguments.
@@ -31,7 +32,7 @@ function getInstanceId(arg: unknown): string | undefined {
 			return id;
 		}
 	}
-
+	logger.warn(`Could not extract a valid instance ID from argument:`, arg);
 	return undefined;
 }
 
@@ -55,6 +56,7 @@ class RecentFoldersManager {
 
 	/** Adds a new folder to the top of the history, removing duplicates and enforcing limits. */
 	async addFolder(folderPath: string): Promise<void> {
+		logger.info(`Adding folder to recent list: ${folderPath}`);
 		let recents = this.getRecentFolders();
 		recents = recents.filter((f) => f !== folderPath);
 		recents.unshift(folderPath);
@@ -69,6 +71,7 @@ class RecentFoldersManager {
 
 	/** Wipes the recent folder history. */
 	async clearHistory(): Promise<void> {
+		logger.info('Clearing recent folder history.');
 		await this.context.globalState.update(RecentFoldersManager.STORAGE_KEY, []);
 		this.onDidChangeEmitter.fire();
 	}
@@ -91,22 +94,16 @@ interface ActionQuickPickItem extends vscode.QuickPickItem {
 async function handleCrashedInstance(instanceId: string, manager: CartaManager, actionName: string): Promise<boolean> {
 	const instance = manager.getInstance(instanceId);
 	if (instance?.status === 'crashed') {
+		logger.warn(`Action '${actionName}' on crashed instance #${instanceId}.`);
 		vscode.window.showWarningMessage(
 			`CARTA: Server process for #${instanceId} is not present and we cannot reconnect. It was killed for some reason not through this extension.`,
 			'Dismiss'
 		);
-		
-		if (actionName === 'stop') {
-			manager.stopInstance(instanceId);
-		} else if (actionName === 'open') {
-			// For 'open', we might just want to inform the user, but often we want to clear it from the UI too
-			// since it's useless. Or let them manually stop/restart.
-			// The user said "Then it should do the correct cleanup... depending on the calling function".
-			// For open, maybe we just leave it for them to decide?
-			// Actually, if they try to OPEN it, and it's dead, let's just clear it.
+
+		if (actionName === 'stop' || actionName === 'open') {
+			logger.info(`Cleaning up crashed instance #${instanceId} from the UI.`);
 			manager.stopInstance(instanceId);
 		}
-		// For 'restart', we don't clear it here, because 'manager.restartInstance' will handle it.
 		return true;
 	}
 	return false;
@@ -117,7 +114,8 @@ async function handleCrashedInstance(instanceId: string, manager: CartaManager, 
  */
 async function handleExecutableError(error: unknown, type: 'carta' | 'browser') {
 	const message = error instanceof Error ? error.message : String(error);
-	
+	logger.error(`Executable error (${type}): ${message}`, error);
+
 	const buttons: string[] = ['Open Settings'];
 	if (type === 'carta') {
 		buttons.push('Download CARTA');
@@ -129,8 +127,10 @@ async function handleExecutableError(error: unknown, type: 'carta' | 'browser') 
 	);
 
 	if (selection === 'Open Settings') {
+		logger.info(`User selected 'Open Settings' from error message.`);
 		await vscode.commands.executeCommand('workbench.action.openSettings', 'carta-in-vscode');
 	} else if (selection === 'Download CARTA') {
+		logger.info(`User selected 'Download CARTA' from error message.`);
 		await vscode.env.openExternal(vscode.Uri.parse('https://cartavis.org/#download'));
 	}
 }
@@ -138,9 +138,15 @@ async function handleExecutableError(error: unknown, type: 'carta' | 'browser') 
 /**
  * Extension entry point. Called by VS Code when any activationEvents are triggered.
  */
+let manager: CartaManager;
+
+/**
+ * Extension entry point. Called by VS Code when any activationEvents are triggered.
+ */
 export function activate(context: vscode.ExtensionContext) {
-	// Initialize core managers and UI providers
-	const manager = new CartaManager();
+	logger.info('CARTA in VS Code extension is activating...');
+
+	manager = new CartaManager();
 	const recentManager = new RecentFoldersManager(context);
 	const runningProvider = new RunningViewersTreeProvider(manager);
 	const recentProvider = new RecentFoldersTreeProvider(
@@ -152,21 +158,24 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	let lastSelectedFolderPath: string | undefined;
 
-	// Register Sidebar View Providers
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider('carta-recent', recentProvider),
 		vscode.window.registerTreeDataProvider('carta-running', runningProvider),
 		runningProvider,
 		recentProvider,
+		logger // Add logger to subscriptions to ensure it's disposed
 	);
+	logger.info('Registered sidebar view providers.');
 
 	/**
 	 * Shared logic to initiate a CARTA server on a directory and open the viewer.
 	 */
 	async function startWithFolder(folderPath: string) {
+		logger.info(`Executing start sequence for folder: ${folderPath}`);
 		const config = getConfig();
 		const capacityError = validateLaunchCapacity(config);
 		if (capacityError) {
+			logger.error(`Launch capacity error: ${capacityError}`);
 			vscode.window.showErrorMessage(`CARTA: ${capacityError}`);
 			return;
 		}
@@ -181,12 +190,15 @@ export function activate(context: vscode.ExtensionContext) {
 				(_progress, token) => manager.startInstance(config, folderPath, token)
 			);
 
-			if (instance.url) {
+			if (instance.base_url) {
 				await recentManager.addFolder(folderPath);
-				await openViewerForInstance(instance.id, instance.url, path.basename(instance.folderPath), config, context.extensionUri);
+				await openViewerForInstance(instance.id, instance.base_url, instance.authToken ?? '', path.basename(instance.folderPath), config, context.extensionUri);
+			} else {
+				logger.error(`Instance #${instance.id} started but returned no base_url.`);
 			}
 		} catch (error: unknown) {
 			if (error instanceof Error && error.message === 'Cancelled by user') {
+				logger.info('CARTA startup was cancelled by the user.');
 				vscode.window.showInformationMessage('CARTA: Startup cancelled');
 				return;
 			}
@@ -194,159 +206,138 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
-	// Command: Open a folder selection dialog
 	const openCommand = vscode.commands.registerCommand('carta-in-vscode.open', async () => {
+		logger.info('Command executed: carta-in-vscode.open');
 		const folderPath = await promptForTargetFolder(lastSelectedFolderPath);
 		if (!folderPath) {
+			logger.info('User cancelled folder selection.');
 			return;
 		}
 		lastSelectedFolderPath = folderPath;
 		await startWithFolder(folderPath);
 	});
 
-	// Command: Open a searchable QuickPick of recent folders
 	const openRecentCommand = vscode.commands.registerCommand('carta-in-vscode.openRecent', async () => {
+		logger.info('Command executed: carta-in-vscode.openRecent');
 		const recents = recentManager.getRecentFolders();
 		if (recents.length === 0) {
 			vscode.window.showInformationMessage('CARTA: No recent folders found.');
 			return;
 		}
 
-		const items: FolderQuickPickItem[] = recents.map((f) => ({
-			label: path.basename(f),
-			description: f,
-			path: f,
-		}));
-
+		const items: FolderQuickPickItem[] = recents.map((f) => ({ label: path.basename(f), description: f, path: f }));
 		const clearItem: vscode.QuickPickItem = { label: '', kind: vscode.QuickPickItemKind.Separator };
 		const clearAction: ActionQuickPickItem = { label: '$(trash) Clear Recent History', action: 'clear' };
-
 		const selection = await vscode.window.showQuickPick<(FolderQuickPickItem | ActionQuickPickItem | vscode.QuickPickItem)>([...items, clearItem, clearAction], {
 			placeHolder: 'Select a recent folder to open with CARTA',
 		});
 
 		if (!selection) {
+			logger.info('User cancelled "Open Recent" quick pick.');
 			return;
 		}
 
 		if ('action' in selection) {
 			await recentManager.clearHistory();
 			vscode.window.showInformationMessage('CARTA: Recent history cleared.');
-			return;
-		}
-
-		if ('path' in selection) {
+		} else if ('path' in selection) {
 			await startWithFolder(selection.path);
 		}
 	});
 
-	// Command: Internal hook to open a folder from the Sidebar
 	const openRecentFolderCommand = vscode.commands.registerCommand('carta-in-vscode.openRecentFolder', async (folderPath: string) => {
+		logger.info(`Command executed: carta-in-vscode.openRecentFolder (for ${folderPath})`);
 		await startWithFolder(folderPath);
 	});
 
-	// Command: Open the current workspace root folder
 	const openWorkspaceCommand = vscode.commands.registerCommand('carta-in-vscode.openWorkspace', async () => {
+		logger.info('Command executed: carta-in-vscode.openWorkspace');
 		const workspaceFolderPath = getWorkspaceFolderPath();
 		if (!workspaceFolderPath) {
+			logger.error('Cannot open workspace folder: no workspace is open.');
 			vscode.window.showErrorMessage('CARTA: Open Workspace requires an open workspace folder.');
 			return;
 		}
 		await startWithFolder(workspaceFolderPath);
 	});
 
-	// Command: Stop every running CARTA server
 	const stopAllCommand = vscode.commands.registerCommand('carta-in-vscode.stopAll', () => {
+		logger.info('Command executed: carta-in-vscode.stopAll');
 		const instances = manager.getInstances();
 		const hasCrashed = instances.some(i => i.status === 'crashed');
 		const stoppedCount = manager.stopAll();
 		for (const instance of instances) {
 			closeWebviewForInstance(instance.id);
 		}
-		
+
 		if (hasCrashed) {
 			vscode.window.showWarningMessage('CARTA: Some server processes were already dead and could not be reconnected. They were killed for some reason not through this extension.');
 		}
-
 		vscode.window.showInformationMessage(
 			stoppedCount > 0 ? `CARTA: Stopped ${stoppedCount} server${stoppedCount === 1 ? '' : 's'}` : 'CARTA: No running servers'
 		);
 	});
 
-	// Command: Stop the most recently started server
 	const stopCommand = vscode.commands.registerCommand('carta-in-vscode.stop', () => {
+		logger.info('Command executed: carta-in-vscode.stop');
 		const instances = manager.getInstances();
 		if (instances.length === 0) {
 			vscode.window.showInformationMessage('CARTA: No running servers');
 			return;
 		}
-
 		const newest = instances[0];
 		manager.stopInstance(newest.id);
 		closeWebviewForInstance(newest.id);
 		vscode.window.showInformationMessage(`CARTA: Stopped server #${newest.id}`);
 	});
 
-	// Command: Reveal/Focus the viewer for a specific instance
 	const openInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.openInstance', async (arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.openInstance', { arg });
 		const config = getConfig();
 		const instanceId = getInstanceId(arg);
-		if (!instanceId) {
-			return;
-		}
+		if (!instanceId) return;
 
 		const instance = manager.getInstance(instanceId);
 		if (!instance) {
+			logger.warn(`Open instance failed: instance #${instanceId} not found.`);
 			return;
 		}
 
-		if (instance.status === 'crashed') {
-			await handleCrashedInstance(instanceId, manager, 'open');
-			return;
-		}
+		if (await handleCrashedInstance(instanceId, manager, 'open')) return;
 
-		if (!instance.url) {
+		if (!instance.base_url) {
+			logger.warn(`Instance #${instanceId} URL is not ready yet.`);
 			vscode.window.showWarningMessage('CARTA: Instance URL is not ready yet');
 			return;
 		}
 
 		try {
-			await openViewerForInstance(instance.id, instance.url, path.basename(instance.folderPath), config, context.extensionUri);
+			await openViewerForInstance(instance.id, instance.base_url, instance.authToken ?? '', path.basename(instance.folderPath), config, context.extensionUri);
 		} catch (error: unknown) {
 			await handleExecutableError(error, 'browser');
 		}
 	});
 
-	// Command: Kill a specific instance from the Sidebar
 	const stopInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.stopInstance', async (arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.stopInstance', { arg });
 		const instanceId = getInstanceId(arg);
-		if (!instanceId) {
-			return;
-		}
+		if (!instanceId) return;
 
-		const instance = manager.getInstance(instanceId);
-		if (instance?.status === 'crashed') {
-			await handleCrashedInstance(instanceId, manager, 'stop');
-			return;
-		}
+		if (await handleCrashedInstance(instanceId, manager, 'stop')) return;
 
-		const stopped = manager.stopInstance(instanceId);
-		if (stopped) {
+		if (manager.stopInstance(instanceId)) {
 			closeWebviewForInstance(instanceId);
 			vscode.window.showInformationMessage(`CARTA: Stopped server #${instanceId}`);
 		}
 	});
 
-	// Command: Re-spawn a specific instance on its original port
 	const restartInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.restartInstance', async (arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.restartInstance', { arg });
 		const instanceId = getInstanceId(arg);
-		if (!instanceId) {
-			return;
-		}
+		if (!instanceId) return;
 
 		const instance = manager.getInstance(instanceId);
 		if (instance?.status === 'crashed') {
-			// Show warning but don't clear it since we're restarting.
 			await vscode.window.showWarningMessage(
 				`CARTA: Server process for #${instanceId} is not present and we cannot reconnect. It was killed for some reason not through this extension.`,
 				'Dismiss'
@@ -361,19 +352,19 @@ export function activate(context: vscode.ExtensionContext) {
 					title: `Restarting CARTA server #${instanceId}...`,
 					cancellable: false,
 				},
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
 				(): Promise<CartaInstance> => manager.restartInstance(instanceId, config)
 			);
 
-			if (newInstance.url) {
-				await openViewerForInstance(newInstance.id, newInstance.url, path.basename(newInstance.folderPath), config, context.extensionUri);
+			if (newInstance.base_url) {
+				await openViewerForInstance(newInstance.id, newInstance.base_url, newInstance.authToken ?? '', path.basename(newInstance.folderPath), config, context.extensionUri);
+			} else {
+				logger.error(`Restarted instance #${newInstance.id} returned no base_url.`);
 			}
 		} catch (error: unknown) {
 			await handleExecutableError(error, 'carta');
 		}
 	});
 
-	// Register all commands to the extension context for cleanup on deactivate
 	context.subscriptions.push(
 		openCommand,
 		openRecentCommand,
@@ -385,10 +376,15 @@ export function activate(context: vscode.ExtensionContext) {
 		stopInstanceCommand,
 		restartInstanceCommand
 	);
+	logger.info('All CARTA commands registered.');
 }
 
 /**
  * Called by VS Code when the extension is disabled or closed.
- * Note: Child processes are handled by the OS/VS Code, but could be explicitly killed here if desired.
  */
-export function deactivate() {}
+export function deactivate() {
+	logger.info('CARTA in VS Code extension is deactivating.');
+	if (manager) {
+		manager.stopAll();
+	}
+}

@@ -17,19 +17,19 @@ export class RunningViewerItem extends vscode.TreeItem {
 		super(path.basename(instance.folderPath) + "/", vscode.TreeItemCollapsibleState.None);
 		// Show instance metadata as a dimmed description
 		this.description = `#${instance.id} · ${instance.port}`;
-		
+
 		if (instance.status === 'crashed') {
 			this.tooltip = `CARTA process died unexpectedly (#${instance.id})`;
 			this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('notificationsWarningIcon.foreground'));
 		} else {
-			this.tooltip = instance.url ?? `Starting on 127.0.0.1:${instance.port}...`;
-			this.iconPath = new vscode.ThemeIcon(instance.url ? 'vm-active' : 'loading~spin');
+			this.tooltip = instance.base_url ?? `Starting on localhost:${instance.port}...`;
+			this.iconPath = new vscode.ThemeIcon(instance.base_url ? 'vm-active' : 'loading~spin');
 		}
 
 		this.contextValue = 'cartaInstance';
-		
+
 		// If the server is ready or crashed, make the row clickable.
-		if (instance.url || instance.status === 'crashed') {
+		if (instance.base_url || instance.status === 'crashed') {
 			this.command = {
 				command: 'carta-in-vscode.openInstance',
 				title: instance.status === 'crashed' ? 'Show Crash Warning' : 'Open Viewer',
