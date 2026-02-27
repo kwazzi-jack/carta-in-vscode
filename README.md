@@ -30,6 +30,7 @@ Run and view [CARTA](https://cartavis.org/) (Cube Analysis and Rendering Tool fo
 ## Features
 
 - **Integrated Viewer:** Open CARTA as a VS Code Webview, Simple Browser, or in your external browser of choice.
+- **Remote SSH Support:** Run CARTA on remote machines via VS Code Remote SSH with automatic port forwarding.
 - **Multiple Instances:** Run and manage multiple CARTA servers simultaneously on different ports.
 - **Lifecycle Management:** Automatic port selection, process monitoring, and easy stopping/restarting of instances.
 - **Sidebar Integration:** A dedicated Sidebar view to track running viewers and quickly reopen recent folders.
@@ -40,6 +41,7 @@ Run and view [CARTA](https://cartavis.org/) (Cube Analysis and Rendering Tool fo
 
 - **CARTA:** Must be installed on your system. Get it at: [https://cartavis.org/](https://cartavis.org/)
 - **Operating System:** Linux (Ubuntu/Debian recommended) or macOS.
+- **Remote Development:** Fully supports [VS Code Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh), allowing you to run CARTA on a remote server and view it locally.
 - **Windows Users:** Direct execution on Windows is not supported. Please use [VS Code Remote - WSL](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-wsl) to run the extension within a Linux environment.
 
 ## Installation
