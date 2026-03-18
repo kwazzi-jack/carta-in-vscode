@@ -64,8 +64,8 @@
       "properties": {
         "carta-in-vscode.executablePath": {
           "type": "string",
-          "default": "carta",
-          "description": "Path to the CARTA executable. Defaults to 'carta' (assumes it's on your PATH)."
+          "default": "",
+          "description": "Path to the CARTA executable. Empty defaults to 'carta' (assumes it's on your PATH)."
         },
         "carta-in-vscode.executableArgs": {
           "type": "array",
@@ -91,7 +91,7 @@
           "type": "number",
           "default": 5,
           "minimum": 1,
-          "maximum": 200,
+          "maximum": 50,
           "description": "Maximum number of concurrently running CARTA servers."
         },
         "carta-in-vscode.viewerMode": {
@@ -116,6 +116,14 @@
           },
           "default": [],
           "description": "Additional command line arguments to pass to the browser executable."
+        },
+        "carta-in-vscode.environmentVariables": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Optional environment variables to set when launching a CARTA instance."
         }
       }
     },
