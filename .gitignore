@@ -5,3 +5,9 @@ node_modules
 *.vsix
 
 carta.AppImage.x86_64/
+releases/
+
+# Ignore all .md files except README.md and CHANGELOG.md
+*.md
+!README.md
+!CHANGELOG.md
