@@ -62,4 +62,6 @@ export interface CartaConfig {
 	browserExecutablePath?: string;
 	/** Additional command line arguments for the browser */
 	browserExecutableArgs: string[];
+	/** Optional environment variables to set when launching a CARTA instance. */
+	environmentVariables?: Record<string, string>;
 }

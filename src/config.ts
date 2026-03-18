@@ -26,6 +26,7 @@ export function getConfig(): CartaConfig {
 		viewerMode: cfg.get<'webview' | 'simpleBrowser' | 'externalBrowser'>('viewerMode', 'webview'),
 		browserExecutablePath: cfg.get<string>('browserExecutablePath', '')?.trim() || undefined,
 		browserExecutableArgs: cfg.get<string[]>('browserExecutableArgs', []),
+		environmentVariables: cfg.get<Record<string, string>>('environmentVariables', {}),
 	};
 }
 
