@@ -26,10 +26,11 @@ async function openInSimpleBrowser(url: string): Promise<void> {
  * @param url The CARTA URL to open.
  * @param args Additional command line arguments.
  */
-function openWithExecutable(executablePath: string, url: string, args: string[]): Promise<void> {
+function openWithExecutable(executablePath: string, url: string, args: string[], envVars: Record<string, string>): Promise<void> {
 	return new Promise((resolve, reject) => {
 		logger.info(`Spawning external browser: ${executablePath} ${[...args, url].join(' ')}`);
 		const child = spawn(executablePath, [...args, url], {
+			env: {...process.env, ...envVars},
 			detached: true,
 			stdio: 'ignore',
 			shell: false,
@@ -38,8 +39,10 @@ function openWithExecutable(executablePath: string, url: string, args: string[])
 			logger.error(`Failed to spawn external browser '${executablePath}': ${err.message}`);
 			reject(err);
 		});
-		child.unref();
-		resolve();
+		child.on('spawn', () => {
+			child.unref();
+			resolve();
+		});
 	});
 }
 
@@ -160,7 +163,7 @@ export async function openViewerForInstance(instanceId: string, baseUrl: string,
 	if (config.viewerMode === 'externalBrowser') {
 		if (config.browserExecutablePath && !vscode.env.remoteName) {
 			const validatedPath = await validateExecutablePath(config.browserExecutablePath, { type: 'browser' });
-			await openWithExecutable(validatedPath, finalUrlString, config.browserExecutableArgs);
+			await openWithExecutable(validatedPath, finalUrlString, config.browserExecutableArgs, config.environmentVariables);
 		} else {
 			if (vscode.env.remoteName) {
 				logger.info('In remote context, using vscode.env.openExternal to open on client machine.');
