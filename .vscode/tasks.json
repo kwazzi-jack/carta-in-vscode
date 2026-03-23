@@ -15,6 +15,32 @@
 				"kind": "build",
 				"isDefault": true
 			}
+		},
+		{
+			"type": "npm",
+			"script": "compile",
+			"group": {
+				"kind": "build"
+			},
+			"problemMatcher": "$tsc"
+		},
+		{
+			"type": "npm",
+			"script": "test",
+			"group": {
+				"kind": "test"
+			}
+		},
+		{
+			"label": "Release Extension",
+			"type": "shell",
+			"command": "${workspaceFolder}/scripts/release.sh",
+			"presentation": {
+				"reveal": "always",
+				"focus": true,
+				"panel": "dedicated"
+			},
+			"problemMatcher": []
 		}
 	]
 }

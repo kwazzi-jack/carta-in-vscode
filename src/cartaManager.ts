@@ -12,6 +12,7 @@ import { listCandidatePorts, pickAvailablePort } from './ports';
 import { CartaConfig, CartaInstance } from './types';
 import { validateExecutablePath } from './validation';
 import process from 'process';
+import { buildCartaArgs } from './arguments';
 import { logger } from './logger';
 
 /**
@@ -189,25 +190,22 @@ export class CartaManager {
 			selectedPort: number,
 			cancellationToken?: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void }
 		): Promise<CartaInstance> {
-	
+
 			this.reservedPorts.add(selectedPort);
 			const instanceId = String(this.nextInstanceId++);
-	
-			const args = [
-				...config.executableArgs,
-				'--no_browser',
-				'--host', '127.0.0.1',
-				'-p', selectedPort.toString(),
-				'--top_level_folder', folderPath,
-				folderPath,
-			];
+
+			const args = buildCartaArgs(config.executableArgs, selectedPort, folderPath);
 			logger.info(`[Instance #${instanceId}] Spawning process...`);
 			logger.debug(` > Path: ${validatedPath}`);
 			logger.debug(` > Args: ${args.join(' ')}`);
-	
-			const cartaProcess = spawn(validatedPath, args, { shell: false, detached: true });
+
+			const cartaProcess = spawn(validatedPath, args, {
+				env: {...process.env, ...config.environmentVariables},
+				shell: false,
+				detached: true
+			});
 			logger.info(`[Instance #${instanceId}] Process spawned with PID ${cartaProcess.pid}.`);
-	
+
 			const instance: CartaInstance = {
 				id: instanceId,
 				process: cartaProcess,
@@ -216,20 +214,20 @@ export class CartaManager {
 				startedAt: Date.now(),
 				status: 'starting',
 			};
-	
+
 			this.instances.set(instanceId, instance);
 			this.fireChange();
-	
+
 			return new Promise<CartaInstance>((resolve, reject) => {
 				let resolved = false;
-	
+
 				const cleanupStartingFailure = () => {
 					logger.warn(`[Instance #${instanceId}] Cleaning up after startup failure.`);
 					this.instances.delete(instanceId);
 					this.reservedPorts.delete(selectedPort);
 					this.fireChange();
 				};
-	
+
 				const onReady = (baseUrl: string, token: string) => {
 					if (resolved) {
 						return;
@@ -244,14 +242,14 @@ export class CartaManager {
 					this.fireChange();
 					resolve(instance);
 				};
-	
+
 				const checkIfReady = (output: string) => {
 					const match = output.match(/(https?:\/\/[\w.-]+:\d+\/)\?token=([\w-]+)/);
 					if (match && match[1] && match[2]) {
 						onReady(match[1], match[2]);
 					}
 				};
-	
+
 				const onCancelled = () => {
 					if (resolved) {
 						return;
@@ -262,15 +260,15 @@ export class CartaManager {
 					cleanupStartingFailure();
 					reject(new Error('Cancelled by user'));
 				};
-	
+
 				if (cancellationToken?.isCancellationRequested) {
 					onCancelled();
 					return;
 				}
 				cancellationToken?.onCancellationRequested(onCancelled);
-	
+
 				this.outputChannel.appendLine(`[Instance #${instanceId}] Spawning: ${validatedPath} ${args.join(' ')}`);
-	
+
 				cartaProcess.stdout?.on('data', (data: Buffer) => {
 					const str = data.toString();
 					this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
@@ -281,7 +279,7 @@ export class CartaManager {
 					this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(str)}`);
 					checkIfReady(str);
 				});
-	
+
 				cartaProcess.on('error', (err) => {
 					if (resolved) {
 						return;
@@ -291,7 +289,7 @@ export class CartaManager {
 					cleanupStartingFailure();
 					reject(err);
 				});
-	
+
 				cartaProcess.on('close', (code) => {
 					const requested = this.stoppingInstances.has(instanceId);
 					if (requested) {
@@ -309,13 +307,13 @@ export class CartaManager {
 						this.reservedPorts.delete(selectedPort);
 					}
 					this.fireChange();
-	
+
 					if (!resolved) {
 						resolved = true;
 						reject(new Error(`CARTA process closed before startup completed. (Exit code: ${code})`));
 					}
 				});
-	
+
 				if (config.startupTimeout > 0) {
 					setTimeout(() => {
 						if (resolved) {
@@ -395,7 +393,11 @@ export class CartaManager {
 		logger.debug(` > Path: ${validatedPath}`);
 		logger.debug(` > Args: ${args.join(' ')}`);
 
-		const cartaProcess = spawn(validatedPath, args, { shell: false, detached: true });
+		const cartaProcess = spawn(validatedPath, args, {
+			env: {...process.env, ...config.environmentVariables},
+			shell: false,
+			detached: true
+		});
 		logger.info(`[Instance #${instanceId}] Process spawned with PID ${cartaProcess.pid} for restart.`);
 
 		const newInstance: CartaInstance = {
@@ -458,14 +460,22 @@ export class CartaManager {
 			});
 
 			cartaProcess.on('close', (code) => {
-				if (!resolved) {
+				const requested = this.stoppingInstances.has(instanceId);
+				if (requested) {
+					this.instances.delete(instanceId);
+					this.stoppingInstances.delete(instanceId);
+					this.reservedPorts.delete(port);
+				} else if (!resolved) {
 					logger.error(`[Instance #${instanceId}] Restarted process closed before becoming ready (Exit code: ${code}).`);
 					resolved = true;
 					this.instances.delete(instanceId);
 					this.reservedPorts.delete(port);
-					this.fireChange();
 					reject(new Error(`CARTA process closed during restart. (Exit code: ${code})`));
+				} else {
+					newInstance.status = "crashed";
+					this.reservedPorts.delete(port);
 				}
+				this.fireChange();
 			});
 		});
 	}
