@@ -86,11 +86,13 @@ else
     fi
 fi
 
-# --- Step 1: Version bump ---
+# --- Step 1: Check CHANGELOG.md ---
 
 OLD_VERSION=$(node -p "require('./package.json').version")
 info "Current version: ${BOLD}${OLD_VERSION}${NC}"
 echo ""
+
+# Determine what the new version will be so we can check the changelog
 echo -e "  Select version bump type:"
 echo -e "    ${BOLD}1)${NC} patch  ($(echo "$OLD_VERSION" | awk -F. '{printf "%s.%s.%s", $1, $2, $3+1}'))"
 echo -e "    ${BOLD}2)${NC} minor  ($(echo "$OLD_VERSION" | awk -F. '{printf "%s.%s.0", $1, $2+1}'))"
@@ -106,43 +108,46 @@ case "$BUMP_CHOICE" in
     *) error "Invalid choice." ;;
 esac
 
+# Calculate the new version without actually bumping yet
+case "$BUMP_TYPE" in
+    patch) NEW_VERSION=$(echo "$OLD_VERSION" | awk -F. '{printf "%s.%s.%s", $1, $2, $3+1}') ;;
+    minor) NEW_VERSION=$(echo "$OLD_VERSION" | awk -F. '{printf "%s.%s.0", $1, $2+1}') ;;
+    major) NEW_VERSION=$(echo "$OLD_VERSION" | awk -F. '{printf "%s.0.0", $1+1}') ;;
+esac
+
+# Check that CHANGELOG.md has an entry for this version
+if ! grep -q "^## \[${NEW_VERSION}\]" CHANGELOG.md; then
+    echo ""
+    error "CHANGELOG.md has no entry for [${NEW_VERSION}].
+
+  Please update CHANGELOG.md with a section like:
+
+    ## [${NEW_VERSION}] - $(date +%Y-%m-%d)
+
+    ### Added
+    - ...
+
+    ### Fixed
+    - ...
+
+  Then re-run this task."
+fi
+
+info "Found changelog entry for ${BOLD}v${NEW_VERSION}${NC}"
+echo ""
+echo "---"
+sed -n "/^## \[${NEW_VERSION}\]/,/^## \[/{/^## \[${NEW_VERSION}\]/p; /^## \[${NEW_VERSION}\]/!{/^## \[/!p;}}" CHANGELOG.md
+echo "---"
+echo ""
+
+if ! confirm "Does the changelog look correct?"; then
+    error "Update CHANGELOG.md and re-run."
+fi
+
+# --- Step 2: Version bump ---
+
 npm version "$BUMP_TYPE" --no-git-tag-version --quiet
-NEW_VERSION=$(node -p "require('./package.json').version")
 info "Bumped version: ${BOLD}${OLD_VERSION}${NC} → ${BOLD}${NEW_VERSION}${NC}"
-
-# --- Step 2: Update CHANGELOG.md ---
-
-echo ""
-info "Opening CHANGELOG.md for editing..."
-info "Add your changes under the [${NEW_VERSION}] section header."
-echo ""
-
-# Insert a new section template at the top of the changelog
-DATE=$(date +%Y-%m-%d)
-TEMPLATE="## [${NEW_VERSION}] - ${DATE}\n\n### Added\n- \n\n### Fixed\n- \n\n### Changed\n- \n"
-
-# Insert after the first line that starts with "# Changelog" or after the header block
-sed -i "0,/^## \[/s//$(echo -e "${TEMPLATE}")## [/" CHANGELOG.md
-
-# Open in VS Code and wait for the user to finish editing
-if command -v code >/dev/null 2>&1; then
-    code --wait CHANGELOG.md
-else
-    ${EDITOR:-nano} CHANGELOG.md
-fi
-
-# Let user review
-echo ""
-info "Changelog updated. Here's the new section:"
-echo "---"
-sed -n "/^## \[${NEW_VERSION}\]/,/^## \[/{ /^## \[${NEW_VERSION}\]/p; /^## \[${NEW_VERSION}\]/!{ /^## \[/!p; } }" CHANGELOG.md
-echo "---"
-
-if ! confirm "Does this look correct?"; then
-    warn "Reverting version bump..."
-    git checkout -- package.json CHANGELOG.md
-    error "Release aborted."
-fi
 
 # --- Step 3: Commit and tag ---
 
