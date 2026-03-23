@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented here.
 
+## [0.1.4] - 2026-03-23
+
+### Added
+- **Environment Variables**: New `environmentVariables` setting to pass custom environment variables when launching a CARTA instance.
+- **Argument Builder**: Dedicated argument-building module that merges user-provided `executableArgs` over sensible defaults, allowing overrides of flags like `--host` and `-p`.
+- **Release Tooling**: Added a VS Code task and interactive release script (`scripts/release.sh`) to automate version bumps, changelog checks, tagging, GitHub releases, and marketplace publishing.
+
+### Fixed
+- **AppImage Recognition**: Improved executable validation to better recognise AppImage binaries.
+- **`.gitignore`**: Added patterns for AppImage files and related archives.
+
 ## [0.1.3] - 2026-02-27
 
 ### Added
