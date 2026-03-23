@@ -22,7 +22,7 @@ export function buildCartaArgs(
 		['--no_browser', []],
 		['--host', ['127.0.0.1']],
 		['-p', [port.toString()]],
-		// ['--top_level_folder', [folderPath]],
+		['--top_level_folder', [folderPath]],
 	]);
 
 	// Remove any default whose key appears in executableArgs
