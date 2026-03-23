@@ -4,6 +4,9 @@ node_modules
 .vscode-test/
 *.vsix
 
+*.AppImage
+*.AppImage.*
+._carta-*
 carta.AppImage.x86_64/
 releases/
 
