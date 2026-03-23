@@ -11,4 +11,11 @@ vsc-extension-quickstart.md
 **/.vscode-test.*
 **/*.js.map
 out/test/**
+*.AppImage
+*.AppImage.*
+._carta-*
 carta.AppImage.x86_64/
+scripts/**
+.claude/**
+.github/**
+CLAUDE.md
