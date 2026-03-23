@@ -9,6 +9,9 @@ All notable changes to this project will be documented here.
 - **Argument Builder**: Dedicated argument-building module that merges user-provided `executableArgs` over sensible defaults, allowing overrides of flags like `--host` and `-p`.
 - **Release Tooling**: Added a VS Code task and interactive release script (`scripts/release.sh`) to automate version bumps, changelog checks, tagging, GitHub releases, and marketplace publishing.
 
+### Changed
+- **README Overhaul**: Added CARTA installation guide with package manager commands, platform verification steps, expanded AppImage documentation (quick setup, downloading, FUSE workaround), default arguments reference, and new configuration examples.
+
 ### Fixed
 - **AppImage Recognition**: Improved executable validation to better recognise AppImage binaries.
 - **`.gitignore`**: Added patterns for AppImage files and related archives.
