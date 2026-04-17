@@ -251,6 +251,10 @@
         {
           "command": "carta-in-vscode.stopInstance",
           "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.copyInstanceId",
+          "when": "false"
         }
       ]
     }

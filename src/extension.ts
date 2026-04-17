@@ -138,6 +138,13 @@ async function handleExecutableError(error: unknown, type: 'carta' | 'browser') 
 }
 
 /**
+ * Displays informational feedback without creating persistent modal-like notifications.
+ */
+function showTransientInfo(message: string, timeoutMs = 3500): void {
+	vscode.window.setStatusBarMessage(message, timeoutMs);
+}
+
+/**
  * Resolves the instance from command args and warns if it cannot be found.
  */
 function resolveInstanceFromArg(arg: unknown, manager: CartaManager): CartaInstance | undefined {
@@ -238,7 +245,7 @@ export function activate(context: vscode.ExtensionContext) {
 		} catch (error: unknown) {
 			if (error instanceof Error && error.message === 'Cancelled by user') {
 				logger.info('CARTA startup was cancelled by the user.');
-				vscode.window.showInformationMessage('CARTA: Startup cancelled');
+				showTransientInfo('CARTA: Startup cancelled');
 				return;
 			}
 			await handleExecutableError(error, 'carta');
@@ -260,7 +267,7 @@ export function activate(context: vscode.ExtensionContext) {
 		logger.info('Command executed: carta-in-vscode.openRecent');
 		const recents = recentManager.getRecentFolders();
 		if (recents.length === 0) {
-			vscode.window.showInformationMessage('CARTA: No recent folders found.');
+			showTransientInfo('CARTA: No recent folders found.');
 			return;
 		}
 
@@ -278,7 +285,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		if ('action' in selection) {
 			await recentManager.clearHistory();
-			vscode.window.showInformationMessage('CARTA: Recent history cleared.');
+			showTransientInfo('CARTA: Recent history cleared.');
 		} else if ('path' in selection) {
 			await startWithFolder(selection.path);
 		}
@@ -312,7 +319,7 @@ export function activate(context: vscode.ExtensionContext) {
 		if (hasCrashed) {
 			vscode.window.showWarningMessage('CARTA: Some server processes were already dead and could not be reconnected. They were killed for some reason not through this extension.');
 		}
-		vscode.window.showInformationMessage(
+		showTransientInfo(
 			stoppedCount > 0 ? `CARTA: Stopped ${stoppedCount} server${stoppedCount === 1 ? '' : 's'}` : 'CARTA: No running servers'
 		);
 	});
@@ -321,13 +328,13 @@ export function activate(context: vscode.ExtensionContext) {
 		logger.info('Command executed: carta-in-vscode.stop');
 		const instances = manager.getInstances();
 		if (instances.length === 0) {
-			vscode.window.showInformationMessage('CARTA: No running servers');
+			showTransientInfo('CARTA: No running servers');
 			return;
 		}
 		const newest = instances[0];
 		manager.stopInstance(newest.id);
 		closeWebviewForInstance(newest.id);
-		vscode.window.showInformationMessage(`CARTA: Stopped server #${newest.id}`);
+		showTransientInfo(`CARTA: Stopped server #${newest.id}`);
 	});
 
 	const openInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.openInstance', async (arg: unknown) => {
@@ -366,7 +373,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		if (manager.stopInstance(instanceId)) {
 			closeWebviewForInstance(instanceId);
-			vscode.window.showInformationMessage(`CARTA: Stopped server #${instanceId}`);
+			showTransientInfo(`CARTA: Stopped server #${instanceId}`);
 		}
 	});
 
@@ -425,7 +432,7 @@ export function activate(context: vscode.ExtensionContext) {
 		].join('\n');
 
 		await vscode.env.clipboard.writeText(clipboardText);
-		vscode.window.showInformationMessage(
+		showTransientInfo(
 			sessionIds.length > 0
 				? `CARTA: Copied instance #${instance.id} with ${sessionIds.length} session ID${sessionIds.length === 1 ? '' : 's'}`
 				: `CARTA: Copied instance #${instance.id} (no sessions observed yet)`
@@ -445,7 +452,7 @@ export function activate(context: vscode.ExtensionContext) {
 		try {
 			const finalUrl = await getAuthenticatedViewerUrl(instance);
 			await vscode.env.clipboard.writeText(finalUrl);
-			vscode.window.showInformationMessage(`CARTA: Copied URL for instance #${instance.id}`);
+			showTransientInfo(`CARTA: Copied URL for instance #${instance.id}`);
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : String(error);
 			vscode.window.showWarningMessage(`CARTA: ${message}`);
@@ -463,7 +470,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		await vscode.env.clipboard.writeText(instance.authToken);
-		vscode.window.showInformationMessage(`CARTA: Copied token for instance #${instance.id}`);
+		showTransientInfo(`CARTA: Copied token for instance #${instance.id}`);
 	});
 
 	const copyInstanceSessionIdsCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstanceSessionIds', async (_arg: unknown) => {
@@ -475,7 +482,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const text = sessionIds.length > 0 ? sessionIds.join('\n') : 'none';
 		await vscode.env.clipboard.writeText(text);
 
-		vscode.window.showInformationMessage(
+		showTransientInfo(
 			sessionIds.length > 0
 				? `CARTA: Copied ${sessionIds.length} session ID${sessionIds.length === 1 ? '' : 's'} for instance #${instance.id}`
 				: `CARTA: No sessions observed yet for instance #${instance.id}`
@@ -490,11 +497,11 @@ export function activate(context: vscode.ExtensionContext) {
 		const folderUri = vscode.Uri.file(instance.folderPath);
 		try {
 			await vscode.commands.executeCommand('revealInExplorer', folderUri);
-			vscode.window.showInformationMessage(`CARTA: Revealed folder for instance #${instance.id}`);
+			showTransientInfo(`CARTA: Revealed folder for instance #${instance.id}`);
 		} catch (error: unknown) {
 			logger.warn(`Reveal in explorer failed for instance #${instance.id}: ${error instanceof Error ? error.message : String(error)}`);
 			await vscode.env.openExternal(folderUri);
-			vscode.window.showInformationMessage(`CARTA: Opened folder for instance #${instance.id}`);
+			showTransientInfo(`CARTA: Opened folder for instance #${instance.id}`);
 		}
 	});
 
@@ -517,7 +524,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(logPath));
 		await vscode.window.showTextDocument(document, { preview: false });
-		vscode.window.showInformationMessage(`CARTA: Opened log file for instance #${instance.id}`);
+		showTransientInfo(`CARTA: Opened log file for instance #${instance.id}`);
 	});
 
 	context.subscriptions.push(
