@@ -496,19 +496,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 		const folderUri = vscode.Uri.file(instance.folderPath);
 		try {
-			const isInWorkspace = vscode.workspace.getWorkspaceFolder(folderUri) !== undefined;
-			if (isInWorkspace) {
-				await vscode.commands.executeCommand('revealInExplorer', folderUri);
-				showTransientInfo(`CARTA: Revealed folder for instance #${instance.id}`);
-				return;
-			}
-
 			await vscode.env.openExternal(folderUri);
 			showTransientInfo(`CARTA: Opened folder for instance #${instance.id}`);
 		} catch (error: unknown) {
 			logger.warn(`Reveal in explorer failed for instance #${instance.id}: ${error instanceof Error ? error.message : String(error)}`);
-			await vscode.env.openExternal(folderUri);
-			showTransientInfo(`CARTA: Opened folder for instance #${instance.id}`);
+			await vscode.commands.executeCommand('revealInExplorer', folderUri);
+			showTransientInfo(`CARTA: Revealed folder for instance #${instance.id}`);
 		}
 	});
 
