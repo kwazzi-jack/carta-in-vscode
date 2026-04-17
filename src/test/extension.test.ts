@@ -26,6 +26,7 @@ suite('Extension Test Suite', () => {
             'carta-in-vscode.copyInstanceUrl',
             'carta-in-vscode.copyInstanceToken',
             'carta-in-vscode.copyInstanceSessionIds',
+            'carta-in-vscode.copyInstancePythonSnippet',
             'carta-in-vscode.focusInstance',
             'carta-in-vscode.openInstanceFolder',
             'carta-in-vscode.openInstanceLog',
@@ -35,6 +36,7 @@ suite('Extension Test Suite', () => {
             'carta-in-vscode.ctx.copyInstanceUrl',
             'carta-in-vscode.ctx.copyInstanceToken',
             'carta-in-vscode.ctx.copyInstanceSessionIds',
+            'carta-in-vscode.ctx.copyInstancePythonSnippet',
             'carta-in-vscode.ctx.openInstanceFolder',
             'carta-in-vscode.ctx.openInstanceLog',
         ];
