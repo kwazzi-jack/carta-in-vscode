@@ -5,7 +5,6 @@
 
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
-import { randomUUID } from 'crypto';
 import * as os from 'os';
 import * as vscode from 'vscode';
 import { listCandidatePorts, pickAvailablePort } from './ports';
