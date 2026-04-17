@@ -50,7 +50,7 @@
       },
       {
         "command": "carta-in-vscode.stopInstance",
-        "title": "CARTA: Stop Viewer Instance",
+        "title": "Stop Viewer Instance",
         "icon": "$(debug-stop)"
       },
       {
@@ -86,6 +86,38 @@
       {
         "command": "carta-in-vscode.openInstanceLog",
         "title": "CARTA: Open Instance Log File"
+      },
+      {
+        "command": "carta-in-vscode.ctx.restartInstance",
+        "title": "Restart Viewer Instance"
+      },
+      {
+        "command": "carta-in-vscode.ctx.stopInstance",
+        "title": "Stop Viewer Instance"
+      },
+      {
+        "command": "carta-in-vscode.ctx.focusInstance",
+        "title": "Focus Viewer Instance"
+      },
+      {
+        "command": "carta-in-vscode.ctx.copyInstanceUrl",
+        "title": "Copy Instance URL"
+      },
+      {
+        "command": "carta-in-vscode.ctx.copyInstanceToken",
+        "title": "Copy Instance Token"
+      },
+      {
+        "command": "carta-in-vscode.ctx.copyInstanceSessionIds",
+        "title": "Copy Instance Session IDs"
+      },
+      {
+        "command": "carta-in-vscode.ctx.openInstanceFolder",
+        "title": "Open Instance Folder"
+      },
+      {
+        "command": "carta-in-vscode.ctx.openInstanceLog",
+        "title": "Open Instance Log File"
       }
     ],
     "configuration": {
@@ -203,42 +235,42 @@
       ],
       "view/item/context": [
         {
-          "command": "carta-in-vscode.restartInstance",
+          "command": "carta-in-vscode.ctx.restartInstance",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "inline@9"
         },
         {
-          "command": "carta-in-vscode.stopInstance",
+          "command": "carta-in-vscode.ctx.stopInstance",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "inline@10"
         },
         {
-          "command": "carta-in-vscode.focusInstance",
+          "command": "carta-in-vscode.ctx.focusInstance",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "navigation@1"
         },
         {
-          "command": "carta-in-vscode.copyInstanceUrl",
+          "command": "carta-in-vscode.ctx.copyInstanceUrl",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "navigation@2"
         },
         {
-          "command": "carta-in-vscode.copyInstanceToken",
+          "command": "carta-in-vscode.ctx.copyInstanceToken",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "navigation@3"
         },
         {
-          "command": "carta-in-vscode.copyInstanceSessionIds",
+          "command": "carta-in-vscode.ctx.copyInstanceSessionIds",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "navigation@4"
         },
         {
-          "command": "carta-in-vscode.openInstanceFolder",
+          "command": "carta-in-vscode.ctx.openInstanceFolder",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "navigation@5"
         },
         {
-          "command": "carta-in-vscode.openInstanceLog",
+          "command": "carta-in-vscode.ctx.openInstanceLog",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "navigation@6"
         }
@@ -254,6 +286,38 @@
         },
         {
           "command": "carta-in-vscode.copyInstanceId",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.restartInstance",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.stopInstance",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.focusInstance",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.copyInstanceUrl",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.copyInstanceToken",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.copyInstanceSessionIds",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.openInstanceFolder",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.openInstanceLog",
           "when": "false"
         }
       ]

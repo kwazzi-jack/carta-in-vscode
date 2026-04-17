@@ -496,8 +496,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 		const folderUri = vscode.Uri.file(instance.folderPath);
 		try {
-			await vscode.commands.executeCommand('revealInExplorer', folderUri);
-			showTransientInfo(`CARTA: Revealed folder for instance #${instance.id}`);
+			const isInWorkspace = vscode.workspace.getWorkspaceFolder(folderUri) !== undefined;
+			if (isInWorkspace) {
+				await vscode.commands.executeCommand('revealInExplorer', folderUri);
+				showTransientInfo(`CARTA: Revealed folder for instance #${instance.id}`);
+				return;
+			}
+
+			await vscode.commands.executeCommand('revealFileInOS', folderUri);
+			showTransientInfo(`CARTA: Opened folder for instance #${instance.id}`);
 		} catch (error: unknown) {
 			logger.warn(`Reveal in explorer failed for instance #${instance.id}: ${error instanceof Error ? error.message : String(error)}`);
 			await vscode.env.openExternal(folderUri);
@@ -527,6 +534,38 @@ export function activate(context: vscode.ExtensionContext) {
 		showTransientInfo(`CARTA: Opened log file for instance #${instance.id}`);
 	});
 
+	const ctxRestartInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.restartInstance', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.restartInstance', arg);
+	});
+
+	const ctxStopInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.stopInstance', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.stopInstance', arg);
+	});
+
+	const ctxFocusInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.focusInstance', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.focusInstance', arg);
+	});
+
+	const ctxCopyInstanceUrlCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.copyInstanceUrl', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.copyInstanceUrl', arg);
+	});
+
+	const ctxCopyInstanceTokenCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.copyInstanceToken', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.copyInstanceToken', arg);
+	});
+
+	const ctxCopyInstanceSessionIdsCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.copyInstanceSessionIds', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.copyInstanceSessionIds', arg);
+	});
+
+	const ctxOpenInstanceFolderCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.openInstanceFolder', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.openInstanceFolder', arg);
+	});
+
+	const ctxOpenInstanceLogCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.openInstanceLog', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.openInstanceLog', arg);
+	});
+
 	context.subscriptions.push(
 		openCommand,
 		openRecentCommand,
@@ -543,7 +582,15 @@ export function activate(context: vscode.ExtensionContext) {
 		copyInstanceTokenCommand,
 		copyInstanceSessionIdsCommand,
 		openInstanceFolderCommand,
-		openInstanceLogCommand
+		openInstanceLogCommand,
+		ctxRestartInstanceCommand,
+		ctxStopInstanceCommand,
+		ctxFocusInstanceCommand,
+		ctxCopyInstanceUrlCommand,
+		ctxCopyInstanceTokenCommand,
+		ctxCopyInstanceSessionIdsCommand,
+		ctxOpenInstanceFolderCommand,
+		ctxOpenInstanceLogCommand
 	);
 	logger.info('All CARTA commands registered.');
 }

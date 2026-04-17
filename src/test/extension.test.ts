@@ -29,6 +29,14 @@ suite('Extension Test Suite', () => {
             'carta-in-vscode.focusInstance',
             'carta-in-vscode.openInstanceFolder',
             'carta-in-vscode.openInstanceLog',
+            'carta-in-vscode.ctx.restartInstance',
+            'carta-in-vscode.ctx.stopInstance',
+            'carta-in-vscode.ctx.focusInstance',
+            'carta-in-vscode.ctx.copyInstanceUrl',
+            'carta-in-vscode.ctx.copyInstanceToken',
+            'carta-in-vscode.ctx.copyInstanceSessionIds',
+            'carta-in-vscode.ctx.openInstanceFolder',
+            'carta-in-vscode.ctx.openInstanceLog',
         ];
 
         for (const command of expectedCommands) {
