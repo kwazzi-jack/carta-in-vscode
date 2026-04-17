@@ -234,7 +234,7 @@ export class CartaManager {
 			this.reservedPorts.add(selectedPort);
 			const instanceId = String(this.nextInstanceId++);
 
-			const args = buildCartaArgs(config.executableArgs, selectedPort, folderPath);
+			const args = buildCartaArgs(config.executableArgs, selectedPort, folderPath, config.enableScripting);
 			logger.info(`[Instance #${instanceId}] Spawning process...`);
 			logger.debug(` > Path: ${validatedPath}`);
 			logger.debug(` > Args: ${args.join(' ')}`);
@@ -424,14 +424,7 @@ export class CartaManager {
 
 		await new Promise(resolve => setTimeout(resolve, 200));
 
-		const args = [
-			...config.executableArgs,
-			'--no_browser',
-			'--host', '127.0.0.1',
-			'-p', port.toString(),
-			'--top_level_folder', folderPath,
-			folderPath,
-		];
+		const args = buildCartaArgs(config.executableArgs, port, folderPath, config.enableScripting);
 		logger.info(`[Instance #${instanceId}] Spawning process for restart...`);
 		logger.debug(` > Path: ${validatedPath}`);
 		logger.debug(` > Args: ${args.join(' ')}`);

@@ -94,7 +94,7 @@ interface ActionQuickPickItem extends vscode.QuickPickItem {
  * Checks if an instance is crashed and shows a warning if so.
  * @returns True if the instance was crashed and handled.
  */
-async function handleCrashedInstance(instanceId: string, manager: CartaManager, actionName: string): Promise<boolean> {
+function handleCrashedInstance(instanceId: string, manager: CartaManager, actionName: string): boolean {
 	const instance = manager.getInstance(instanceId);
 	if (instance?.status === 'crashed') {
 		logger.warn(`Action '${actionName}' on crashed instance #${instanceId}.`);
@@ -143,6 +143,20 @@ async function handleExecutableError(error: unknown, type: 'carta' | 'browser') 
  */
 function showTransientInfo(message: string, timeoutMs = 3500): void {
 	vscode.window.setStatusBarMessage(message, timeoutMs);
+}
+
+/**
+ * Displays a short-lived notification toast for important transient events.
+ */
+function showBriefInfoToast(message: string, durationMs = 1800): void {
+	void vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: message,
+			cancellable: false,
+		},
+		() => new Promise<void>((resolve) => setTimeout(resolve, durationMs))
+	);
 }
 
 /**
@@ -228,6 +242,7 @@ async function copyCartaPythonSnippet(
 
 	await vscode.env.clipboard.writeText(snippet);
 	showTransientInfo('Copied carta-python code to clipboard');
+	showBriefInfoToast('Copied carta-python code to clipboard');
 
 	if (!sessionId && !options?.suppressNoSessionWarning) {
 		vscode.window.showWarningMessage('CARTA: No session ID observed yet. Replace SESSION_ID after connecting.');
@@ -243,7 +258,7 @@ async function maybeWarnMissingCartaPythonPackage(): Promise<void> {
 	try {
 		const pythonExt = vscode.extensions.getExtension('ms-python.python');
 		if (pythonExt) {
-			const api: any = await pythonExt.activate();
+			const api: unknown = await pythonExt.activate();
 			const envPath = api?.environments?.getActiveEnvironmentPath?.();
 			if (typeof envPath === 'string') {
 				interpreterPath = envPath;
@@ -340,7 +355,7 @@ export function activate(context: vscode.ExtensionContext) {
 			if (instance.base_url) {
 				await recentManager.addFolder(folderPath);
 				await openViewerForInstance(instance.id, instance.base_url, instance.authToken ?? '', path.basename(instance.folderPath), config, context.extensionUri);
-				if (config.autoCopyPythonSnippetOnStart && !hadRunningInstances) {
+				if (config.enableScripting && config.autoCopyPythonSnippetOnStart && !hadRunningInstances) {
 					try {
 						await copyCartaPythonSnippet(manager, instance, { waitForSessionMs: 5000, suppressNoSessionWarning: true });
 						await maybeWarnMissingCartaPythonPackage();
@@ -511,6 +526,14 @@ export function activate(context: vscode.ExtensionContext) {
 
 			if (newInstance.base_url) {
 				await openViewerForInstance(newInstance.id, newInstance.base_url, newInstance.authToken ?? '', path.basename(newInstance.folderPath), config, context.extensionUri);
+				if (config.enableScripting && config.autoCopyPythonSnippetOnStart) {
+					try {
+						await copyCartaPythonSnippet(manager, newInstance, { waitForSessionMs: 5000, suppressNoSessionWarning: true });
+						await maybeWarnMissingCartaPythonPackage();
+					} catch (snippetError: unknown) {
+						logger.warn(`Auto-copy carta-python snippet after restart failed for instance #${newInstance.id}: ${snippetError instanceof Error ? snippetError.message : String(snippetError)}`);
+					}
+				}
 			} else {
 				logger.error(`Restarted instance #${newInstance.id} returned no base_url.`);
 			}
@@ -601,6 +624,14 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const copyInstancePythonSnippetCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstancePythonSnippet', async (_arg: unknown) => {
 		logger.info('Command executed: carta-in-vscode.copyInstancePythonSnippet', { arg: _arg });
+		const config = getConfig();
+		if (!config.enableScripting) {
+			vscode.window.showErrorMessage(
+				'CARTA: Scripting is disabled. Enable "carta-in-vscode.enableScripting" and start/restart an instance to use carta-python snippets.'
+			);
+			return;
+		}
+
 		const instance = resolveInstanceFromArg(_arg, manager);
 		if (!instance) return;
 

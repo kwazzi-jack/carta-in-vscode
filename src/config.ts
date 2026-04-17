@@ -27,6 +27,7 @@ export function getConfig(): CartaConfig {
 		browserExecutablePath: cfg.get<string>('browserExecutablePath', '')?.trim() || undefined,
 		browserExecutableArgs: cfg.get<string[]>('browserExecutableArgs', []),
 		environmentVariables: cfg.get<Record<string, string>>('environmentVariables', {}),
+		enableScripting: cfg.get<boolean>('enableScripting', false),
 		autoCopyPythonSnippetOnStart: cfg.get<boolean>('autoCopyPythonSnippetOnStart', true),
 	};
 }

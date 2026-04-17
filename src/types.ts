@@ -66,6 +66,8 @@ export interface CartaConfig {
 	browserExecutableArgs: string[];
 	/** Optional environment variables to set when launching a CARTA instance. */
 	environmentVariables: Record<string, string>;
+	/** Enables CARTA backend scripting mode (--enable_scripting). */
+	enableScripting: boolean;
 	/** Auto-copy carta-python snippet when launching the first instance from zero running servers. */
 	autoCopyPythonSnippetOnStart: boolean;
 }
