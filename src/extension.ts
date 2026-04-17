@@ -7,6 +7,7 @@
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import { spawnSync } from 'child_process';
 import * as vscode from 'vscode';
 import { closeWebviewForInstance, openViewerForInstance } from './browser';
 import { CartaManager } from './cartaManager';
@@ -182,6 +183,104 @@ async function getAuthenticatedViewerUrl(instance: CartaInstance): Promise<strin
 }
 
 /**
+ * Returns the most recent session ID for an instance, optionally waiting a short time.
+ */
+async function getLatestSessionId(manager: CartaManager, instanceId: string, waitMs = 0): Promise<string | undefined> {
+	const pick = () => {
+		const ids = manager.getSessionIds(instanceId);
+		return ids.length > 0 ? ids[ids.length - 1] : undefined;
+	};
+
+	const first = pick();
+	if (first || waitMs <= 0) {
+		return first;
+	}
+
+	const end = Date.now() + waitMs;
+	while (Date.now() < end) {
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		const next = pick();
+		if (next) {
+			return next;
+		}
+	}
+
+	return undefined;
+}
+
+/**
+ * Builds the carta-python snippet and copies it to the clipboard.
+ */
+async function copyCartaPythonSnippet(
+	manager: CartaManager,
+	instance: CartaInstance,
+	options?: { waitForSessionMs?: number; suppressNoSessionWarning?: boolean }
+): Promise<void> {
+	const finalUrl = await getAuthenticatedViewerUrl(instance);
+	const sessionId = await getLatestSessionId(manager, instance.id, options?.waitForSessionMs ?? 0);
+	const sessionExpr = sessionId ?? 'SESSION_ID';
+
+	const snippet = [
+		'from carta.session import Session',
+		'',
+		`session = Session.interact("${finalUrl}", ${sessionExpr})`,
+	].join('\n');
+
+	await vscode.env.clipboard.writeText(snippet);
+	showTransientInfo('Copied carta-python code to clipboard');
+
+	if (!sessionId && !options?.suppressNoSessionWarning) {
+		vscode.window.showWarningMessage('CARTA: No session ID observed yet. Replace SESSION_ID after connecting.');
+	}
+}
+
+/**
+ * Best-effort check for carta-python availability in the selected Python environment.
+ */
+async function maybeWarnMissingCartaPythonPackage(): Promise<void> {
+	let interpreterPath: string | undefined;
+
+	try {
+		const pythonExt = vscode.extensions.getExtension('ms-python.python');
+		if (pythonExt) {
+			const api: any = await pythonExt.activate();
+			const envPath = api?.environments?.getActiveEnvironmentPath?.();
+			if (typeof envPath === 'string') {
+				interpreterPath = envPath;
+			} else if (envPath?.path && typeof envPath.path === 'string') {
+				interpreterPath = envPath.path;
+			}
+		}
+	} catch (error: unknown) {
+		logger.debug(`Python extension API lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+	}
+
+	if (!interpreterPath) {
+		const configuredPath = vscode.workspace.getConfiguration('python').get<string>('defaultInterpreterPath');
+		if (configuredPath && configuredPath.trim().length > 0) {
+			interpreterPath = configuredPath;
+		}
+	}
+
+	if (!interpreterPath) {
+		return;
+	}
+
+	const check = spawnSync(interpreterPath, ['-c', 'import carta.session'], { stdio: 'ignore' });
+	if (check.status === 0) {
+		return;
+	}
+
+	const choice = await vscode.window.showWarningMessage(
+		'CARTA: carta-python was not found in the selected Python interpreter/kernel. You should probably install it first.',
+		'Open Repo'
+	);
+	if (choice === 'Open Repo') {
+		await vscode.env.openExternal(vscode.Uri.parse('https://github.com/CARTAvis/carta-python.git'));
+	}
+}
+
+/**
  * Extension entry point. Called by VS Code when any activationEvents are triggered.
  */
 let manager: CartaManager;
@@ -219,6 +318,7 @@ export function activate(context: vscode.ExtensionContext) {
 	async function startWithFolder(folderPath: string) {
 		logger.info(`Executing start sequence for folder: ${folderPath}`);
 		lastSelectedFolderPath = folderPath;
+		const hadRunningInstances = manager.getInstances().length > 0;
 		const config = getConfig();
 		const capacityError = validateLaunchCapacity(config);
 		if (capacityError) {
@@ -240,6 +340,14 @@ export function activate(context: vscode.ExtensionContext) {
 			if (instance.base_url) {
 				await recentManager.addFolder(folderPath);
 				await openViewerForInstance(instance.id, instance.base_url, instance.authToken ?? '', path.basename(instance.folderPath), config, context.extensionUri);
+				if (config.autoCopyPythonSnippetOnStart && !hadRunningInstances) {
+					try {
+						await copyCartaPythonSnippet(manager, instance, { waitForSessionMs: 5000, suppressNoSessionWarning: true });
+						await maybeWarnMissingCartaPythonPackage();
+					} catch (snippetError: unknown) {
+						logger.warn(`Auto-copy carta-python snippet failed for instance #${instance.id}: ${snippetError instanceof Error ? snippetError.message : String(snippetError)}`);
+					}
+				}
 			} else {
 				logger.error(`Instance #${instance.id} started but returned no base_url.`);
 			}
@@ -478,15 +586,31 @@ export function activate(context: vscode.ExtensionContext) {
 		const instance = resolveInstanceFromArg(_arg, manager);
 		if (!instance) return;
 
-		const sessionIds = manager.getSessionIds(instance.id);
-		const text = sessionIds.length > 0 ? sessionIds.join('\n') : 'none';
-		await vscode.env.clipboard.writeText(text);
+		const sessionId = await getLatestSessionId(manager, instance.id, 0);
+		if (!sessionId) {
+			vscode.window.showWarningMessage(`CARTA: No session ID observed yet for instance #${instance.id}`);
+			return;
+		}
+
+		await vscode.env.clipboard.writeText(sessionId);
 
 		showTransientInfo(
-			sessionIds.length > 0
-				? `CARTA: Copied ${sessionIds.length} session ID${sessionIds.length === 1 ? '' : 's'} for instance #${instance.id}`
-				: `CARTA: No sessions observed yet for instance #${instance.id}`
+			`CARTA: Copied session ID for instance #${instance.id}`
 		);
+	});
+
+	const copyInstancePythonSnippetCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstancePythonSnippet', async (_arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.copyInstancePythonSnippet', { arg: _arg });
+		const instance = resolveInstanceFromArg(_arg, manager);
+		if (!instance) return;
+
+		try {
+			await copyCartaPythonSnippet(manager, instance, { waitForSessionMs: 1500 });
+			await maybeWarnMissingCartaPythonPackage();
+		} catch (error: unknown) {
+			const message = error instanceof Error ? error.message : String(error);
+			vscode.window.showWarningMessage(`CARTA: ${message}`);
+		}
 	});
 
 	const openInstanceFolderCommand = vscode.commands.registerCommand('carta-in-vscode.openInstanceFolder', async (_arg: unknown) => {
@@ -551,6 +675,10 @@ export function activate(context: vscode.ExtensionContext) {
 		await vscode.commands.executeCommand('carta-in-vscode.copyInstanceSessionIds', arg);
 	});
 
+	const ctxCopyInstancePythonSnippetCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.copyInstancePythonSnippet', async (arg: unknown) => {
+		await vscode.commands.executeCommand('carta-in-vscode.copyInstancePythonSnippet', arg);
+	});
+
 	const ctxOpenInstanceFolderCommand = vscode.commands.registerCommand('carta-in-vscode.ctx.openInstanceFolder', async (arg: unknown) => {
 		await vscode.commands.executeCommand('carta-in-vscode.openInstanceFolder', arg);
 	});
@@ -574,6 +702,7 @@ export function activate(context: vscode.ExtensionContext) {
 		copyInstanceUrlCommand,
 		copyInstanceTokenCommand,
 		copyInstanceSessionIdsCommand,
+		copyInstancePythonSnippetCommand,
 		openInstanceFolderCommand,
 		openInstanceLogCommand,
 		ctxRestartInstanceCommand,
@@ -582,6 +711,7 @@ export function activate(context: vscode.ExtensionContext) {
 		ctxCopyInstanceUrlCommand,
 		ctxCopyInstanceTokenCommand,
 		ctxCopyInstanceSessionIdsCommand,
+		ctxCopyInstancePythonSnippetCommand,
 		ctxOpenInstanceFolderCommand,
 		ctxOpenInstanceLogCommand
 	);
