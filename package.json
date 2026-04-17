@@ -57,6 +57,11 @@
         "command": "carta-in-vscode.restartInstance",
         "title": "CARTA: Restart Viewer Instance",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "carta-in-vscode.copyInstanceId",
+        "title": "CARTA: Copy Instance ID",
+        "icon": "$(clippy)"
       }
     ],
     "configuration": {
