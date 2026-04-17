@@ -38,6 +38,8 @@ export interface CartaInstance {
 	base_url?: string;
 	/** Epoch timestamp (ms) of when the instance was initiated */
 	startedAt: number;
+	/** CARTA session IDs observed for this server instance */
+	sessionIds: string[];
 	/** Current operational status */
 	status: CartaInstanceStatus;
 }

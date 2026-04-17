@@ -5,6 +5,8 @@
  */
 
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { closeWebviewForInstance, openViewerForInstance } from './browser';
 import { CartaManager } from './cartaManager';
@@ -133,6 +135,43 @@ async function handleExecutableError(error: unknown, type: 'carta' | 'browser') 
 		logger.info(`User selected 'Download CARTA' from error message.`);
 		await vscode.env.openExternal(vscode.Uri.parse('https://cartavis.org/#download'));
 	}
+}
+
+/**
+ * Resolves the instance from command args and warns if it cannot be found.
+ */
+function resolveInstanceFromArg(arg: unknown, manager: CartaManager): CartaInstance | undefined {
+	const instanceId = getInstanceId(arg);
+	if (!instanceId) {
+		return undefined;
+	}
+
+	const instance = manager.getInstance(instanceId);
+	if (!instance) {
+		logger.warn(`Command failed: instance #${instanceId} not found.`);
+		vscode.window.showWarningMessage(`CARTA: Instance #${instanceId} not found`);
+		return undefined;
+	}
+
+	return instance;
+}
+
+/**
+ * Builds the externally reachable authenticated URL for an instance.
+ */
+async function getAuthenticatedViewerUrl(instance: CartaInstance): Promise<string> {
+	if (!instance.base_url) {
+		throw new Error('Instance URL is not ready yet.');
+	}
+
+	if (!instance.authToken) {
+		throw new Error('Instance token is not ready yet.');
+	}
+
+	const resolvedUri = await vscode.env.asExternalUri(vscode.Uri.parse(instance.base_url));
+	const finalUrl = new URL(resolvedUri.toString());
+	finalUrl.searchParams.set('token', instance.authToken);
+	return finalUrl.toString();
 }
 
 /**
@@ -399,28 +438,86 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	const copyInstanceUrlCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstanceUrl', async (_arg: unknown) => {
-		logger.info('Command executed: carta-in-vscode.copyInstanceUrl');
-		vscode.window.showInformationMessage('CARTA: Copy Instance URL will be implemented in the next phase.');
+		logger.info('Command executed: carta-in-vscode.copyInstanceUrl', { arg: _arg });
+		const instance = resolveInstanceFromArg(_arg, manager);
+		if (!instance) return;
+
+		try {
+			const finalUrl = await getAuthenticatedViewerUrl(instance);
+			await vscode.env.clipboard.writeText(finalUrl);
+			vscode.window.showInformationMessage(`CARTA: Copied URL for instance #${instance.id}`);
+		} catch (error: unknown) {
+			const message = error instanceof Error ? error.message : String(error);
+			vscode.window.showWarningMessage(`CARTA: ${message}`);
+		}
 	});
 
 	const copyInstanceTokenCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstanceToken', async (_arg: unknown) => {
-		logger.info('Command executed: carta-in-vscode.copyInstanceToken');
-		vscode.window.showInformationMessage('CARTA: Copy Instance Token will be implemented in the next phase.');
+		logger.info('Command executed: carta-in-vscode.copyInstanceToken', { arg: _arg });
+		const instance = resolveInstanceFromArg(_arg, manager);
+		if (!instance) return;
+
+		if (!instance.authToken) {
+			vscode.window.showWarningMessage(`CARTA: Token is not ready for instance #${instance.id}`);
+			return;
+		}
+
+		await vscode.env.clipboard.writeText(instance.authToken);
+		vscode.window.showInformationMessage(`CARTA: Copied token for instance #${instance.id}`);
 	});
 
 	const copyInstanceSessionIdsCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstanceSessionIds', async (_arg: unknown) => {
-		logger.info('Command executed: carta-in-vscode.copyInstanceSessionIds');
-		vscode.window.showInformationMessage('CARTA: Copy Session IDs will be implemented in the next phase.');
+		logger.info('Command executed: carta-in-vscode.copyInstanceSessionIds', { arg: _arg });
+		const instance = resolveInstanceFromArg(_arg, manager);
+		if (!instance) return;
+
+		const sessionIds = manager.getSessionIds(instance.id);
+		const text = sessionIds.length > 0 ? sessionIds.join('\n') : 'none';
+		await vscode.env.clipboard.writeText(text);
+
+		vscode.window.showInformationMessage(
+			sessionIds.length > 0
+				? `CARTA: Copied ${sessionIds.length} session ID${sessionIds.length === 1 ? '' : 's'} for instance #${instance.id}`
+				: `CARTA: No sessions observed yet for instance #${instance.id}`
+		);
 	});
 
 	const openInstanceFolderCommand = vscode.commands.registerCommand('carta-in-vscode.openInstanceFolder', async (_arg: unknown) => {
-		logger.info('Command executed: carta-in-vscode.openInstanceFolder');
-		vscode.window.showInformationMessage('CARTA: Open Instance Folder will be implemented in the next phase.');
+		logger.info('Command executed: carta-in-vscode.openInstanceFolder', { arg: _arg });
+		const instance = resolveInstanceFromArg(_arg, manager);
+		if (!instance) return;
+
+		const folderUri = vscode.Uri.file(instance.folderPath);
+		try {
+			await vscode.commands.executeCommand('revealInExplorer', folderUri);
+			vscode.window.showInformationMessage(`CARTA: Revealed folder for instance #${instance.id}`);
+		} catch (error: unknown) {
+			logger.warn(`Reveal in explorer failed for instance #${instance.id}: ${error instanceof Error ? error.message : String(error)}`);
+			await vscode.env.openExternal(folderUri);
+			vscode.window.showInformationMessage(`CARTA: Opened folder for instance #${instance.id}`);
+		}
 	});
 
 	const openInstanceLogCommand = vscode.commands.registerCommand('carta-in-vscode.openInstanceLog', async (_arg: unknown) => {
-		logger.info('Command executed: carta-in-vscode.openInstanceLog');
-		vscode.window.showInformationMessage('CARTA: Open Instance Log File will be implemented in the next phase.');
+		logger.info('Command executed: carta-in-vscode.openInstanceLog', { arg: _arg });
+		const instance = resolveInstanceFromArg(_arg, manager);
+		if (!instance) return;
+
+		const logPath = path.join(os.homedir(), '.carta', 'log', 'carta.log');
+		if (!fs.existsSync(logPath)) {
+			const choice = await vscode.window.showWarningMessage(
+				`CARTA: Log file not found at ${logPath}`,
+				'Open Extension Logs Folder'
+			);
+			if (choice === 'Open Extension Logs Folder') {
+				await vscode.commands.executeCommand('workbench.action.openLogsFolder');
+			}
+			return;
+		}
+
+		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(logPath));
+		await vscode.window.showTextDocument(document, { preview: false });
+		vscode.window.showInformationMessage(`CARTA: Opened log file for instance #${instance.id}`);
 	});
 
 	context.subscriptions.push(
