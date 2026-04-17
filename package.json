@@ -73,7 +73,11 @@
       },
       {
         "command": "carta-in-vscode.copyInstanceSessionIds",
-        "title": "CARTA: Copy Instance Session IDs"
+        "title": "CARTA: Copy Instance Session ID"
+      },
+      {
+        "command": "carta-in-vscode.copyInstancePythonSnippet",
+        "title": "CARTA: Copy carta-python Code Snippet"
       },
       {
         "command": "carta-in-vscode.focusInstance",
@@ -111,7 +115,11 @@
       },
       {
         "command": "carta-in-vscode.ctx.copyInstanceSessionIds",
-        "title": "Copy Instance Session IDs"
+        "title": "Copy Instance Session ID"
+      },
+      {
+        "command": "carta-in-vscode.ctx.copyInstancePythonSnippet",
+        "title": "Copy carta-python Code"
       },
       {
         "command": "carta-in-vscode.ctx.openInstanceFolder",
@@ -187,6 +195,11 @@
           },
           "default": {},
           "description": "Optional environment variables to set when launching a CARTA instance."
+        },
+        "carta-in-vscode.autoCopyPythonSnippetOnStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically copy a carta-python Session.interact snippet to clipboard when launching the first CARTA instance from zero running servers."
         }
       }
     },
@@ -267,14 +280,19 @@
           "group": "navigation@4"
         },
         {
-          "command": "carta-in-vscode.ctx.openInstanceFolder",
+          "command": "carta-in-vscode.ctx.copyInstancePythonSnippet",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "navigation@5"
         },
         {
-          "command": "carta-in-vscode.ctx.openInstanceLog",
+          "command": "carta-in-vscode.ctx.openInstanceFolder",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "navigation@6"
+        },
+        {
+          "command": "carta-in-vscode.ctx.openInstanceLog",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "navigation@7"
         }
       ],
       "commandPalette": [
@@ -312,6 +330,10 @@
         },
         {
           "command": "carta-in-vscode.ctx.copyInstanceSessionIds",
+          "when": "false"
+        },
+        {
+          "command": "carta-in-vscode.ctx.copyInstancePythonSnippet",
           "when": "false"
         },
         {
