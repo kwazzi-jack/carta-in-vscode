@@ -196,10 +196,15 @@
           "default": {},
           "description": "Optional environment variables to set when launching a CARTA instance."
         },
+        "carta-in-vscode.enableScripting": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable CARTA backend scripting mode (--enable_scripting). This can introduce security risk if malicious scripts are executed. Enable only if you understand and accept that risk."
+        },
         "carta-in-vscode.autoCopyPythonSnippetOnStart": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically copy a carta-python Session.interact snippet to clipboard when launching the first CARTA instance from zero running servers."
+          "description": "Automatically copy a carta-python Session.interact snippet to clipboard when launching or restarting an instance. Only applies when enableScripting is true."
         }
       }
     },
