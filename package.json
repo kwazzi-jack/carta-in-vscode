@@ -62,6 +62,30 @@
         "command": "carta-in-vscode.copyInstanceId",
         "title": "CARTA: Copy Instance ID",
         "icon": "$(clippy)"
+      },
+      {
+        "command": "carta-in-vscode.copyInstanceUrl",
+        "title": "CARTA: Copy Instance URL"
+      },
+      {
+        "command": "carta-in-vscode.copyInstanceToken",
+        "title": "CARTA: Copy Instance Token"
+      },
+      {
+        "command": "carta-in-vscode.copyInstanceSessionIds",
+        "title": "CARTA: Copy Instance Session IDs"
+      },
+      {
+        "command": "carta-in-vscode.focusInstance",
+        "title": "CARTA: Focus Viewer Instance"
+      },
+      {
+        "command": "carta-in-vscode.openInstanceFolder",
+        "title": "CARTA: Open Instance Folder"
+      },
+      {
+        "command": "carta-in-vscode.openInstanceLog",
+        "title": "CARTA: Open Instance Log File"
       }
     ],
     "configuration": {
@@ -187,6 +211,36 @@
           "command": "carta-in-vscode.stopInstance",
           "when": "view == carta-running && viewItem == cartaInstance",
           "group": "inline@10"
+        },
+        {
+          "command": "carta-in-vscode.focusInstance",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "navigation@1"
+        },
+        {
+          "command": "carta-in-vscode.copyInstanceUrl",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "navigation@2"
+        },
+        {
+          "command": "carta-in-vscode.copyInstanceToken",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "navigation@3"
+        },
+        {
+          "command": "carta-in-vscode.copyInstanceSessionIds",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "navigation@4"
+        },
+        {
+          "command": "carta-in-vscode.openInstanceFolder",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "navigation@5"
+        },
+        {
+          "command": "carta-in-vscode.openInstanceLog",
+          "when": "view == carta-running && viewItem == cartaInstance",
+          "group": "navigation@6"
         }
       ],
       "commandPalette": [

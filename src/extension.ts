@@ -365,6 +365,64 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	const copyInstanceIdCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstanceId', async (arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.copyInstanceId', { arg });
+		const instanceId = getInstanceId(arg);
+		if (!instanceId) return;
+
+		const instance = manager.getInstance(instanceId);
+		if (!instance) {
+			logger.warn(`Copy instance ID failed: instance #${instanceId} not found.`);
+			vscode.window.showWarningMessage(`CARTA: Instance #${instanceId} not found`);
+			return;
+		}
+
+		const sessionIds = manager.getSessionIds(instanceId);
+		const clipboardText = [
+			`instanceId=${instance.id}`,
+			`port=${instance.port}`,
+			`folderPath=${instance.folderPath}`,
+			`sessionIds=${sessionIds.length > 0 ? sessionIds.join(',') : 'none'}`,
+		].join('\n');
+
+		await vscode.env.clipboard.writeText(clipboardText);
+		vscode.window.showInformationMessage(
+			sessionIds.length > 0
+				? `CARTA: Copied instance #${instance.id} with ${sessionIds.length} session ID${sessionIds.length === 1 ? '' : 's'}`
+				: `CARTA: Copied instance #${instance.id} (no sessions observed yet)`
+		);
+	});
+
+	const focusInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.focusInstance', async (arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.focusInstance', { arg });
+		await vscode.commands.executeCommand('carta-in-vscode.openInstance', arg);
+	});
+
+	const copyInstanceUrlCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstanceUrl', async (_arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.copyInstanceUrl');
+		vscode.window.showInformationMessage('CARTA: Copy Instance URL will be implemented in the next phase.');
+	});
+
+	const copyInstanceTokenCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstanceToken', async (_arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.copyInstanceToken');
+		vscode.window.showInformationMessage('CARTA: Copy Instance Token will be implemented in the next phase.');
+	});
+
+	const copyInstanceSessionIdsCommand = vscode.commands.registerCommand('carta-in-vscode.copyInstanceSessionIds', async (_arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.copyInstanceSessionIds');
+		vscode.window.showInformationMessage('CARTA: Copy Session IDs will be implemented in the next phase.');
+	});
+
+	const openInstanceFolderCommand = vscode.commands.registerCommand('carta-in-vscode.openInstanceFolder', async (_arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.openInstanceFolder');
+		vscode.window.showInformationMessage('CARTA: Open Instance Folder will be implemented in the next phase.');
+	});
+
+	const openInstanceLogCommand = vscode.commands.registerCommand('carta-in-vscode.openInstanceLog', async (_arg: unknown) => {
+		logger.info('Command executed: carta-in-vscode.openInstanceLog');
+		vscode.window.showInformationMessage('CARTA: Open Instance Log File will be implemented in the next phase.');
+	});
+
 	context.subscriptions.push(
 		openCommand,
 		openRecentCommand,
@@ -374,7 +432,14 @@ export function activate(context: vscode.ExtensionContext) {
 		stopAllCommand,
 		openInstanceCommand,
 		stopInstanceCommand,
-		restartInstanceCommand
+		restartInstanceCommand,
+		copyInstanceIdCommand,
+		focusInstanceCommand,
+		copyInstanceUrlCommand,
+		copyInstanceTokenCommand,
+		copyInstanceSessionIdsCommand,
+		openInstanceFolderCommand,
+		openInstanceLogCommand
 	);
 	logger.info('All CARTA commands registered.');
 }
