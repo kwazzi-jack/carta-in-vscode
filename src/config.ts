@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import * as path from 'path';
+import * as os from 'os';
 import { getPortRangeSize, parsePortRange } from './ports';
 import { CartaConfig } from './types';
 
@@ -65,14 +65,12 @@ function getPreferredDefaultUri(lastSelectedFolderPath?: string): vscode.Uri | u
 		return vscode.Uri.file(lastSelectedFolderPath);
 	}
 
-	const activeDoc = vscode.window.activeTextEditor?.document;
-	if (activeDoc?.uri.scheme === 'file') {
-		const filePath = activeDoc.uri.fsPath;
-		return vscode.Uri.file(path.dirname(filePath));
+	const workspacePath = getWorkspaceFolderPath();
+	if (workspacePath) {
+		return vscode.Uri.file(workspacePath);
 	}
 
-	const workspacePath = getWorkspaceFolderPath();
-	return workspacePath ? vscode.Uri.file(workspacePath) : undefined;
+	return vscode.Uri.file(os.homedir());
 }
 
 /**

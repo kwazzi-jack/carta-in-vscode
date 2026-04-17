@@ -218,6 +218,7 @@ export function activate(context: vscode.ExtensionContext) {
 	 */
 	async function startWithFolder(folderPath: string) {
 		logger.info(`Executing start sequence for folder: ${folderPath}`);
+		lastSelectedFolderPath = folderPath;
 		const config = getConfig();
 		const capacityError = validateLaunchCapacity(config);
 		if (capacityError) {
@@ -259,7 +260,6 @@ export function activate(context: vscode.ExtensionContext) {
 			logger.info('User cancelled folder selection.');
 			return;
 		}
-		lastSelectedFolderPath = folderPath;
 		await startWithFolder(folderPath);
 	});
 
@@ -503,7 +503,7 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			await vscode.commands.executeCommand('revealFileInOS', folderUri);
+			await vscode.env.openExternal(folderUri);
 			showTransientInfo(`CARTA: Opened folder for instance #${instance.id}`);
 		} catch (error: unknown) {
 			logger.warn(`Reveal in explorer failed for instance #${instance.id}: ${error instanceof Error ? error.message : String(error)}`);

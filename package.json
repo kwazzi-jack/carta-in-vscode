@@ -89,11 +89,13 @@
       },
       {
         "command": "carta-in-vscode.ctx.restartInstance",
-        "title": "Restart Viewer Instance"
+        "title": "Restart Viewer Instance",
+        "icon": "$(refresh)"
       },
       {
         "command": "carta-in-vscode.ctx.stopInstance",
-        "title": "Stop Viewer Instance"
+        "title": "Stop Viewer Instance",
+        "icon": "$(debug-stop)"
       },
       {
         "command": "carta-in-vscode.ctx.focusInstance",
