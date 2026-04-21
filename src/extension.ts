@@ -16,6 +16,46 @@ import { RecentFoldersTreeProvider, RunningViewerItem, RunningViewersTreeProvide
 import { CartaInstance } from './types';
 import { logger } from './logger';
 
+interface PythonExtensionApi {
+	environments?: {
+		getActiveEnvironmentPath?: (resource?: vscode.Uri) => string | { path?: string } | undefined;
+	};
+}
+
+function coerceInterpreterPath(value: unknown): string | undefined {
+	if (typeof value === 'string' && value.trim().length > 0) {
+		return value;
+	}
+
+	if (typeof value !== 'object' || value === null) {
+		return undefined;
+	}
+
+	const record = value as Record<string, unknown>;
+	const directKeys = ['path', 'fsPath', 'interpreterPath', 'executablePath'];
+	for (const key of directKeys) {
+		const candidate = record[key];
+		if (typeof candidate === 'string' && candidate.trim().length > 0) {
+			return candidate;
+		}
+	}
+
+	const pathObj = record.path;
+	if (typeof pathObj === 'object' && pathObj !== null) {
+		const nested = pathObj as Record<string, unknown>;
+		const nestedFsPath = nested.fsPath;
+		if (typeof nestedFsPath === 'string' && nestedFsPath.trim().length > 0) {
+			return nestedFsPath;
+		}
+		const nestedPath = nested.path;
+		if (typeof nestedPath === 'string' && nestedPath.trim().length > 0) {
+			return nestedPath;
+		}
+	}
+
+	return undefined;
+}
+
 /**
  * Extracts a valid CARTA instance ID from command arguments.
  * Supports string IDs or TreeItem objects.
@@ -146,20 +186,6 @@ function showTransientInfo(message: string, timeoutMs = 3500): void {
 }
 
 /**
- * Displays a short-lived notification toast for important transient events.
- */
-function showBriefInfoToast(message: string, durationMs = 1800): void {
-	void vscode.window.withProgress(
-		{
-			location: vscode.ProgressLocation.Notification,
-			title: message,
-			cancellable: false,
-		},
-		() => new Promise<void>((resolve) => setTimeout(resolve, durationMs))
-	);
-}
-
-/**
  * Resolves the instance from command args and warns if it cannot be found.
  */
 function resolveInstanceFromArg(arg: unknown, manager: CartaManager): CartaInstance | undefined {
@@ -241,8 +267,7 @@ async function copyCartaPythonSnippet(
 	].join('\n');
 
 	await vscode.env.clipboard.writeText(snippet);
-	showTransientInfo('Copied carta-python code to clipboard');
-	showBriefInfoToast('Copied carta-python code to clipboard');
+	await vscode.window.showInformationMessage('Copied carta-python code to clipboard');
 
 	if (!sessionId && !options?.suppressNoSessionWarning) {
 		vscode.window.showWarningMessage('CARTA: No session ID observed yet. Replace SESSION_ID after connecting.');
@@ -254,23 +279,29 @@ async function copyCartaPythonSnippet(
  */
 async function maybeWarnMissingCartaPythonPackage(): Promise<void> {
 	let interpreterPath: string | undefined;
+	const activeResource = vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+	const pythonExt = vscode.extensions.getExtension('ms-python.python');
 
 	try {
-		const pythonExt = vscode.extensions.getExtension('ms-python.python');
 		if (pythonExt) {
-			const api: unknown = await pythonExt.activate();
-			const envPath = api?.environments?.getActiveEnvironmentPath?.();
-			if (typeof envPath === 'string') {
-				interpreterPath = envPath;
-			} else if (envPath?.path && typeof envPath.path === 'string') {
-				interpreterPath = envPath.path;
-			}
+			const api = (await pythonExt.activate()) as PythonExtensionApi;
+			const envPath = api.environments?.getActiveEnvironmentPath?.(activeResource);
+			interpreterPath = coerceInterpreterPath(envPath);
 		}
 	} catch (error: unknown) {
 		logger.debug(`Python extension API lookup failed: ${error instanceof Error ? error.message : String(error)}`);
 	}
 
 	if (!interpreterPath) {
+		try {
+			const selectedFromCommand = await vscode.commands.executeCommand<unknown>('python.interpreterPath', activeResource);
+			interpreterPath = coerceInterpreterPath(selectedFromCommand);
+		} catch (error: unknown) {
+			logger.debug(`python.interpreterPath command failed: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	if (!interpreterPath && !pythonExt) {
 		const configuredPath = vscode.workspace.getConfiguration('python').get<string>('defaultInterpreterPath');
 		if (configuredPath && configuredPath.trim().length > 0) {
 			interpreterPath = configuredPath;
@@ -278,6 +309,7 @@ async function maybeWarnMissingCartaPythonPackage(): Promise<void> {
 	}
 
 	if (!interpreterPath) {
+		logger.debug('Skipping carta-python availability check: unable to resolve selected Python interpreter path.');
 		return;
 	}
 
@@ -287,9 +319,31 @@ async function maybeWarnMissingCartaPythonPackage(): Promise<void> {
 	}
 
 	const choice = await vscode.window.showWarningMessage(
-		'CARTA: carta-python was not found in the selected Python interpreter/kernel. You should probably install it first.',
+		`CARTA: carta-python was not found in the selected Python interpreter/kernel (${interpreterPath}).`,
+		'Install carta-python',
+		'Select Interpreter',
 		'Open Repo'
 	);
+	if (choice === 'Install carta-python') {
+		const quotedInterpreter = JSON.stringify(interpreterPath);
+		const installCmd = [
+			`if ${quotedInterpreter} -m pip --version >/dev/null 2>&1; then`,
+			`  ${quotedInterpreter} -m pip install git+https://github.com/CARTAvis/carta-python.git;`,
+			`elif command -v uv >/dev/null 2>&1; then`,
+			`  uv pip install --python ${quotedInterpreter} git+https://github.com/CARTAvis/carta-python.git;`,
+			'else',
+			'  echo "CARTA: pip is unavailable in the selected interpreter and uv is not on PATH.";',
+			'  echo "Install pip in this environment or install uv, then retry.";',
+			'fi',
+		].join(' ');
+		const terminal = vscode.window.createTerminal({ name: 'CARTA Python Install' });
+		terminal.show(true);
+		terminal.sendText(installCmd, true);
+		showTransientInfo('CARTA: Started carta-python installation in terminal');
+	}
+	if (choice === 'Select Interpreter') {
+		await vscode.commands.executeCommand('python.setInterpreter');
+	}
 	if (choice === 'Open Repo') {
 		await vscode.env.openExternal(vscode.Uri.parse('https://github.com/CARTAvis/carta-python.git'));
 	}
@@ -472,7 +526,7 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 
-		if (await handleCrashedInstance(instanceId, manager, 'open')) return;
+		if (handleCrashedInstance(instanceId, manager, 'open')) return;
 
 		if (!instance.base_url) {
 			logger.warn(`Instance #${instanceId} URL is not ready yet.`);
@@ -487,12 +541,12 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	const stopInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.stopInstance', async (arg: unknown) => {
+	const stopInstanceCommand = vscode.commands.registerCommand('carta-in-vscode.stopInstance', (arg: unknown) => {
 		logger.info('Command executed: carta-in-vscode.stopInstance', { arg });
 		const instanceId = getInstanceId(arg);
 		if (!instanceId) return;
 
-		if (await handleCrashedInstance(instanceId, manager, 'stop')) return;
+		if (handleCrashedInstance(instanceId, manager, 'stop')) return;
 
 		if (manager.stopInstance(instanceId)) {
 			closeWebviewForInstance(instanceId);
@@ -626,9 +680,14 @@ export function activate(context: vscode.ExtensionContext) {
 		logger.info('Command executed: carta-in-vscode.copyInstancePythonSnippet', { arg: _arg });
 		const config = getConfig();
 		if (!config.enableScripting) {
-			vscode.window.showErrorMessage(
-				'CARTA: Scripting is disabled. Enable "carta-in-vscode.enableScripting" and start/restart an instance to use carta-python snippets.'
+			const choice = await vscode.window.showErrorMessage(
+				'CARTA: Scripting is disabled. Enable "carta-in-vscode.enableScripting" and start/restart an instance to use carta-python snippets.',
+				'Open Settings'
 			);
+			await maybeWarnMissingCartaPythonPackage();
+			if (choice === 'Open Settings') {
+				await vscode.commands.executeCommand('workbench.action.openSettings', 'carta-in-vscode.enableScripting');
+			}
 			return;
 		}
 
