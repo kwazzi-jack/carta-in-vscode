@@ -221,11 +221,13 @@
       "carta-sidebar": [
         {
           "id": "carta-recent",
-          "name": "Recent Folders"
+          "name": "Recent Folders",
+          "icon": "$(history)"
         },
         {
           "id": "carta-running",
-          "name": "Running Viewers"
+          "name": "Running Viewers",
+          "icon": "$(vm-active)"
         }
       ]
     },
