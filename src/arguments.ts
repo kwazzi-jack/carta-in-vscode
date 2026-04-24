@@ -15,8 +15,13 @@
 export function buildCartaArgs(
 	executableArgs: string[],
 	port: number,
-	folderPath: string
+	folderPath: string,
+	enableScripting: boolean
 ): string[] {
+	const sanitizedExecutableArgs = enableScripting
+		? executableArgs
+		: executableArgs.filter((arg) => arg !== '--enable_scripting');
+
 	// Defaults that can be overridden by executableArgs
 	const defaults = new Map<string, string[]>([
 		['--no_browser', []],
@@ -25,8 +30,12 @@ export function buildCartaArgs(
 		['--top_level_folder', [folderPath]],
 	]);
 
+	if (enableScripting) {
+		defaults.set('--enable_scripting', []);
+	}
+
 	// Remove any default whose key appears in executableArgs
-	for (const arg of executableArgs) {
+	for (const arg of sanitizedExecutableArgs) {
 		if (defaults.has(arg)) {
 			defaults.delete(arg);
 		}
@@ -35,7 +44,7 @@ export function buildCartaArgs(
 	// Flatten remaining defaults, then append user args, then the positional folder
 	const args = [
 		...Array.from(defaults.entries()).flatMap(([flag, vals]) => [flag, ...vals]),
-		...executableArgs,
+		...sanitizedExecutableArgs,
 		folderPath
 	];
 

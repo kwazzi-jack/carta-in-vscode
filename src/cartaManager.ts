@@ -5,7 +5,6 @@
 
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
-import { randomUUID } from 'crypto';
 import * as os from 'os';
 import * as vscode from 'vscode';
 import { listCandidatePorts, pickAvailablePort } from './ports';
@@ -99,6 +98,39 @@ export class CartaManager {
 	}
 
 	/**
+	 * Extracts CARTA session IDs from process output lines.
+	 * Examples matched:
+	 * - "Session (2647896887:1)"
+	 * - "Session 2647896887 [host] Connected"
+	 */
+	private extractSessionIds(output: string): string[] {
+		const found = new Set<string>();
+		const regex = /\bSession(?:\s+\((\d+):\d+\)|\s+(\d+)\b)/g;
+		let match: RegExpExecArray | null;
+
+		while ((match = regex.exec(output)) !== null) {
+			const id = match[1] ?? match[2];
+			if (id) {
+				found.add(id);
+			}
+		}
+
+		return [...found];
+	}
+
+	/**
+	 * Records newly observed session IDs for a running instance.
+	 */
+	private recordSessionIds(instance: CartaInstance, output: string): void {
+		for (const sessionId of this.extractSessionIds(output)) {
+			if (!instance.sessionIds.includes(sessionId)) {
+				instance.sessionIds.push(sessionId);
+				logger.info(`[Instance #${instance.id}] Observed new CARTA session ${sessionId}.`);
+			}
+		}
+	}
+
+	/**
 	 * Returns an array of currently running instances, newest first.
 	 */
 	getInstances(): CartaInstance[] {
@@ -110,6 +142,14 @@ export class CartaManager {
 	 */
 	getInstance(instanceId: string): CartaInstance | undefined {
 		return this.instances.get(instanceId);
+	}
+
+	/**
+	 * Returns a copy of tracked session IDs for a specific instance.
+	 */
+	getSessionIds(instanceId: string): string[] {
+		const instance = this.instances.get(instanceId);
+		return instance ? [...instance.sessionIds] : [];
 	}
 
 	/**
@@ -194,7 +234,7 @@ export class CartaManager {
 			this.reservedPorts.add(selectedPort);
 			const instanceId = String(this.nextInstanceId++);
 
-			const args = buildCartaArgs(config.executableArgs, selectedPort, folderPath);
+			const args = buildCartaArgs(config.executableArgs, selectedPort, folderPath, config.enableScripting);
 			logger.info(`[Instance #${instanceId}] Spawning process...`);
 			logger.debug(` > Path: ${validatedPath}`);
 			logger.debug(` > Args: ${args.join(' ')}`);
@@ -212,6 +252,7 @@ export class CartaManager {
 				folderPath,
 				port: selectedPort,
 				startedAt: Date.now(),
+				sessionIds: [],
 				status: 'starting',
 			};
 
@@ -272,11 +313,13 @@ export class CartaManager {
 				cartaProcess.stdout?.on('data', (data: Buffer) => {
 					const str = data.toString();
 					this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
+					this.recordSessionIds(instance, str);
 					checkIfReady(str);
 				});
 				cartaProcess.stderr?.on('data', (data: Buffer) => {
 					const str = data.toString();
 					this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(str)}`);
+					this.recordSessionIds(instance, str);
 					checkIfReady(str);
 				});
 
@@ -381,14 +424,7 @@ export class CartaManager {
 
 		await new Promise(resolve => setTimeout(resolve, 200));
 
-		const args = [
-			...config.executableArgs,
-			'--no_browser',
-			'--host', '127.0.0.1',
-			'-p', port.toString(),
-			'--top_level_folder', folderPath,
-			folderPath,
-		];
+		const args = buildCartaArgs(config.executableArgs, port, folderPath, config.enableScripting);
 		logger.info(`[Instance #${instanceId}] Spawning process for restart...`);
 		logger.debug(` > Path: ${validatedPath}`);
 		logger.debug(` > Args: ${args.join(' ')}`);
@@ -406,6 +442,7 @@ export class CartaManager {
 			folderPath,
 			port,
 			startedAt: Date.now(),
+			sessionIds: [],
 			status: 'starting',
 		};
 
@@ -440,12 +477,14 @@ export class CartaManager {
 			cartaProcess.stdout?.on('data', (data: Buffer) => {
 				const str = data.toString();
 				this.outputChannel.append(`[Instance #${instanceId}] STDOUT: ${this.stripAnsi(str)}`);
+				this.recordSessionIds(newInstance, str);
 				checkIfReady(str);
 			});
 
 			cartaProcess.stderr?.on('data', (data: Buffer) => {
 				const str = data.toString();
 				this.outputChannel.append(`[Instance #${instanceId}] STDERR: ${this.stripAnsi(str)}`);
+				this.recordSessionIds(newInstance, str);
 				checkIfReady(str);
 			});
 
