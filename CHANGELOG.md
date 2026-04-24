@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.2.0] - 2026-04-24
+## [0.2.1] - 2026-04-24
 
 ### Added
 - **Instance Actions and Clipboard Tools**: Added commands for running instances to focus viewers, copy URL/token/session ID, copy instance metadata, open instance folder, and open the CARTA log file.
