@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.0] - 2026-04-24
+
+### Added
+- **Instance Actions and Clipboard Tools**: Added commands for running instances to focus viewers, copy URL/token/session ID, copy instance metadata, open instance folder, and open the CARTA log file.
+- **carta-python Workflow Support**: Added scripting-focused settings (`enableScripting`, `autoCopyPythonSnippetOnStart`) and commands to copy `Session.interact(...)` snippets.
+- **Session ID Tracking**: CARTA session IDs are now parsed from server output, stored per instance, and exposed to commands for quicker API handoff.
+- **Interpreter-Aware Guidance**: Added Python interpreter detection with prompts to install `carta-python`, switch interpreters, or open the upstream repository.
+
+### Changed
+- **Launch Argument Handling**: Unified startup and restart argument building so `--enable_scripting` is only applied when explicitly enabled.
+- **Running View Context Menu**: Expanded right-click actions and refactored context command wiring for better discoverability in the Running Viewers panel.
+- **Notification UX**: Replaced several persistent info popups with transient status-bar feedback for common operations.
+- **Folder Picker Defaults**: Improved folder selection defaults to prefer workspace context and fall back to the home directory when needed.
+- **Documentation Refresh**: Updated `README.md` to reflect the new CARTA API and scripting-oriented workflows.
+
+### Fixed
+- **Explorer Reveal Behavior**: Improved folder-opening behavior with better fallback handling when external open is unavailable.
+- **Tree/View Command Labels**: Corrected and clarified context action titles for running instances.
+
+### Removed
+- **Repository Screenshots**: Removed maintained screenshot image assets that were no longer being updated.
+
 ## [0.1.4] - 2026-03-23
 
 ### Added
